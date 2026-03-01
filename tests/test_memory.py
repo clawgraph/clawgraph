@@ -3,6 +3,7 @@
 from unittest.mock import MagicMock, patch
 
 from clawgraph.memory import AddResult, Memory
+from clawgraph.ontology import Ontology
 
 
 class TestMemoryAdd:
@@ -137,3 +138,59 @@ class TestAddResult:
         d = r.to_dict()
         assert d["ok"] is False
         assert d["errors"] == ["err"]
+
+
+class TestMemoryConstraints:
+    """Tests for Memory with ontology constraints."""
+
+    def test_memory_passes_allowed_labels(self) -> None:
+        mem = Memory(
+            db_path=":memory:",
+            allowed_labels=["Person", "Company"],
+        )
+        assert mem._ontology.allowed_labels == ["Person", "Company"]
+
+    def test_memory_passes_allowed_relationship_types(self) -> None:
+        mem = Memory(
+            db_path=":memory:",
+            allowed_relationship_types=["WORKS_AT"],
+        )
+        assert mem._ontology.allowed_relationship_types == ["WORKS_AT"]
+
+    def test_memory_accepts_ontology_object(self) -> None:
+        ont = Ontology(
+            allowed_labels=["Patient", "Doctor"],
+            allowed_relationship_types=["TREATS"],
+        )
+        mem = Memory(db_path=":memory:", ontology=ont)
+        assert mem._ontology is ont
+        assert mem._ontology.allowed_labels == ["Patient", "Doctor"]
+
+    def test_ontology_object_overrides_params(self) -> None:
+        ont = Ontology(allowed_labels=["X"])
+        mem = Memory(
+            db_path=":memory:",
+            allowed_labels=["Y"],  # should be ignored
+            ontology=ont,
+        )
+        assert mem._ontology.allowed_labels == ["X"]
+
+    @patch("clawgraph.llm.litellm")
+    def test_add_with_constraints_passes_context(self, mock_litellm: MagicMock) -> None:
+        json_resp = '{"entities": [{"name": "Alice", "label": "Person"}], "relationships": []}'
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock(message=MagicMock(content=json_resp))]
+        mock_litellm.completion.return_value = mock_response
+
+        mem = Memory(
+            db_path=":memory:",
+            allowed_labels=["Person", "Company"],
+        )
+        result = mem.add("Alice is a person")
+        assert result.ok
+
+        # Verify the LLM was called with constraint context
+        call_args = mock_litellm.completion.call_args
+        messages = call_args.kwargs.get("messages") or call_args[1].get("messages")
+        system_msg = messages[0]["content"]
+        assert "Person" in system_msg
