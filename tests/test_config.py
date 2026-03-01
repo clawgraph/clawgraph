@@ -13,7 +13,7 @@ class TestLoadConfig:
         fake_path = tmp_path / "nonexistent" / "config.yaml"
         with patch("clawgraph.config.get_config_path", return_value=fake_path):
             config = load_config()
-        assert config["llm"]["model"] == "gpt-4"
+        assert config["llm"]["model"] == "gpt-4o-mini"
         assert config["llm"]["temperature"] == 0.0
         assert config["output"]["format"] == "human"
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -17,11 +18,16 @@ class GraphDB:
         Args:
             db_path: Path to the database directory.
                      Defaults to ~/.clawgraph/data.
+                     Use ':memory:' for in-memory database.
         """
         if db_path is None:
-            db_path = Path.home() / ".clawgraph" / "data"
-        self._db_path = Path(db_path)
-        self._db_path.mkdir(parents=True, exist_ok=True)
+            from clawgraph.config import load_config
+            config = load_config()
+            db_path = config.get("db", {}).get("path", str(Path.home() / ".clawgraph" / "data"))
+
+        self._db_path = db_path
+        if str(db_path) != ":memory:":
+            Path(db_path).mkdir(parents=True, exist_ok=True)
         self._db = kuzu.Database(str(self._db_path))
         self._conn = kuzu.Connection(self._db)
 
@@ -50,16 +56,79 @@ class GraphDB:
         except Exception as e:
             raise DatabaseError(f"Cypher execution failed: {e}") from e
 
+    def get_tables(self) -> list[dict[str, Any]]:
+        """Get all tables in the database."""
+        return self.execute("CALL show_tables() RETURN *")
+
     def has_node_table(self, label: str) -> bool:
         """Check if a node table exists."""
-        try:
-            result = self._conn.execute(
-                "CALL show_tables() RETURN name WHERE name = $name",
-                {"name": label},
-            )
-            return result.has_next()
-        except Exception:
-            return False
+        tables = self.get_tables()
+        return any(t.get("name") == label and t.get("type") == "NODE" for t in tables)
+
+    def has_rel_table(self, name: str) -> bool:
+        """Check if a relationship table exists."""
+        tables = self.get_tables()
+        return any(t.get("name") == name and t.get("type") == "REL" for t in tables)
+
+    def create_node_table(self, label: str, properties: dict[str, str]) -> None:
+        """Create a node table if it doesn't exist.
+
+        Args:
+            label: The node table name (e.g., 'Person').
+            properties: Dict of property_name -> Kùzu type (e.g., {'name': 'STRING'}).
+                        First property is used as PRIMARY KEY.
+        """
+        if self.has_node_table(label):
+            return
+
+        if not properties:
+            properties = {"name": "STRING"}
+
+        pk = next(iter(properties))
+        props = ", ".join(f"{k} {v}" for k, v in properties.items())
+        cypher = f"CREATE NODE TABLE {label}({props}, PRIMARY KEY({pk}))"
+        self.execute(cypher)
+
+    def create_rel_table(self, name: str, from_label: str, to_label: str, properties: dict[str, str] | None = None) -> None:
+        """Create a relationship table if it doesn't exist.
+
+        Args:
+            name: The relationship table name (e.g., 'WORKS_AT').
+            from_label: Source node table.
+            to_label: Target node table.
+            properties: Optional properties on the relationship.
+        """
+        if self.has_rel_table(name):
+            return
+
+        props = ""
+        if properties:
+            props = ", " + ", ".join(f"{k} {v}" for k, v in properties.items())
+        cypher = f"CREATE REL TABLE {name}(FROM {from_label} TO {to_label}{props})"
+        self.execute(cypher)
+
+    def ensure_base_schema(self) -> None:
+        """Ensure the base Entity/Relates schema exists.
+
+        Creates a generic Entity node table and Relates rel table
+        that can be used for any graph memory storage.
+        """
+        self.create_node_table("Entity", {"name": "STRING", "label": "STRING"})
+        self.create_rel_table("Relates", "Entity", "Entity", {"type": "STRING"})
+
+    def get_all_entities(self) -> list[dict[str, Any]]:
+        """Get all entities in the graph."""
+        if not self.has_node_table("Entity"):
+            return []
+        return self.execute("MATCH (e:Entity) RETURN e.name, e.label")
+
+    def get_all_relationships(self) -> list[dict[str, Any]]:
+        """Get all relationships in the graph."""
+        if not self.has_rel_table("Relates"):
+            return []
+        return self.execute(
+            "MATCH (a:Entity)-[r:Relates]->(b:Entity) RETURN a.name, r.type, b.name"
+        )
 
     def close(self) -> None:
         """Close the database connection."""
