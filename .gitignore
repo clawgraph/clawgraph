@@ -1,0 +1,37 @@
+# Branding (private)
+BRANDING_CHECKLIST.md
+
+# Publishing notes
+PUBLISHING.md
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+src/*.egg-info/
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+*.env
+!.env.example
+
+# ClawGraph local data
+.clawgraph/

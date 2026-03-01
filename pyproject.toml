@@ -1,0 +1,67 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "clawgraph"
+version = "0.1.0"
+description = "Graph-based memory abstraction layer for AI agents"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.10"
+authors = [
+    { name = "clawgraph", email = "admin@clawgraph.ai" },
+]
+keywords = ["ai", "agents", "memory", "graph", "cypher", "llm", "openclaw"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Database",
+    "Typing :: Typed",
+]
+dependencies = [
+    "typer>=0.9.0",
+    "kuzu>=0.4.0",
+    "litellm>=1.0.0",
+    "pyyaml>=6.0",
+    "rich>=13.0.0",
+]
+
+[project.scripts]
+clawgraph = "clawgraph.cli:app"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0",
+]
+
+[project.urls]
+Homepage = "https://clawgraph.ai"
+Repository = "https://github.com/clawgraph/clawgraph"
+Issues = "https://github.com/clawgraph/clawgraph/issues"
+Documentation = "https://clawgraph.ai/docs"
+
+[tool.ruff]
+target-version = "py310"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
