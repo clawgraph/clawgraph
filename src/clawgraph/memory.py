@@ -50,6 +50,9 @@ class Memory:
         db_path: str | None = None,
         model: str | None = None,
         ontology_dir: str | None = None,
+        allowed_labels: list[str] | None = None,
+        allowed_relationship_types: list[str] | None = None,
+        ontology: Ontology | None = None,
     ) -> None:
         """Initialize the memory layer.
 
@@ -58,10 +61,23 @@ class Memory:
                      Use ':memory:' for ephemeral storage.
             model: LLM model override. Defaults to config value.
             ontology_dir: Path to ontology storage dir.
+            allowed_labels: Constrain entity extraction to these labels.
+            allowed_relationship_types: Constrain relationship extraction
+                                        to these types.
+            ontology: Pass a pre-configured Ontology instance directly.
+                      Overrides ontology_dir, allowed_labels, and
+                      allowed_relationship_types if provided.
         """
         self._db = GraphDB(db_path=db_path)
         self._db.ensure_base_schema()
-        self._ontology = Ontology(config_dir=ontology_dir)
+        if ontology is not None:
+            self._ontology = ontology
+        else:
+            self._ontology = Ontology(
+                config_dir=ontology_dir,
+                allowed_labels=allowed_labels,
+                allowed_relationship_types=allowed_relationship_types,
+            )
         self._model = model
 
     def add(self, statement: str) -> AddResult:

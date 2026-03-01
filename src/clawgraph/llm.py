@@ -108,6 +108,7 @@ def infer_ontology(
         "  - All entities are stored as Entity nodes with properties: name (STRING, PK), label (STRING)\n"
         "  - All relationships use Relates with property: type (STRING)\n\n"
         "Extract the entities and relationship from the statement.\n"
+        "If ALLOWED labels or relationship types are specified below, you MUST only use those.\n"
         "Respond with ONLY valid JSON (no markdown fences):\n"
         "{\n"
         '  "entities": [\n'
@@ -119,7 +120,7 @@ def infer_ontology(
         "}\n\n"
     )
     if existing_ontology:
-        system_prompt += f"Existing ontology for reference:\n{existing_ontology}\n\n"
+        system_prompt += f"Existing ontology:\n{existing_ontology}\n\n"
 
     try:
         response = litellm.completion(
@@ -181,6 +182,7 @@ def infer_ontology_batch(
         "  - All entities are stored as Entity nodes with properties: name (STRING, PK), label (STRING)\n"
         "  - All relationships use Relates with property: type (STRING)\n\n"
         "Deduplicate entities — if the same entity appears in multiple statements, include it only once.\n"
+        "If ALLOWED labels or relationship types are specified below, you MUST only use those.\n"
         "Respond with ONLY valid JSON (no markdown fences):\n"
         "{\n"
         '  "entities": [\n'
@@ -192,7 +194,7 @@ def infer_ontology_batch(
         "}\n\n"
     )
     if existing_ontology:
-        system_prompt += f"Existing ontology for reference:\n{existing_ontology}\n\n"
+        system_prompt += f"Existing ontology:\n{existing_ontology}\n\n"
 
     try:
         response = litellm.completion(
