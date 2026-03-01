@@ -27,7 +27,8 @@ class GraphDB:
 
         self._db_path = db_path
         if str(db_path) != ":memory:":
-            Path(db_path).mkdir(parents=True, exist_ok=True)
+            # Only create the parent dir — Kùzu creates the DB dir itself
+            Path(db_path).parent.mkdir(parents=True, exist_ok=True)
         self._db = kuzu.Database(str(self._db_path))
         self._conn = kuzu.Connection(self._db)
 
