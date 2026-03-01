@@ -148,6 +148,78 @@ def infer_ontology(
         raise LLMError(f"Failed to parse ontology response: {e}\nRaw: {cleaned}") from e
 
 
+def infer_ontology_batch(
+    statements: list[str],
+    existing_ontology: str = "",
+    model: str | None = None,
+) -> dict[str, Any]:
+    """Infer entities and relationships from multiple statements in one LLM call.
+
+    This is much faster than calling infer_ontology() in a loop because
+    it batches everything into a single API request.
+
+    Args:
+        statements: List of natural language statements.
+        existing_ontology: Current schema for consistency.
+        model: LLM model to use.
+
+    Returns:
+        Combined dict with 'entities' and 'relationships'.
+
+    Raises:
+        LLMError: If the LLM call fails or response is not valid JSON.
+    """
+    config = load_config()
+    model = model or config.get("llm", {}).get("model", "gpt-4o-mini")
+
+    numbered = "\n".join(f"{i+1}. {s}" for i, s in enumerate(statements))
+
+    system_prompt = (
+        "You are a graph ontology designer for a Kùzu embedded graph database.\n"
+        "Given MULTIPLE natural language statements, extract ALL entities and relationships.\n\n"
+        "IMPORTANT: We use a GENERIC schema:\n"
+        "  - All entities are stored as Entity nodes with properties: name (STRING, PK), label (STRING)\n"
+        "  - All relationships use Relates with property: type (STRING)\n\n"
+        "Deduplicate entities — if the same entity appears in multiple statements, include it only once.\n"
+        "Respond with ONLY valid JSON (no markdown fences):\n"
+        "{\n"
+        '  "entities": [\n'
+        '    {"name": "actual name", "label": "Person|Organization|Place|etc"}\n'
+        "  ],\n"
+        '  "relationships": [\n'
+        '    {"from": "entity name", "to": "entity name", "type": "WORKS_AT|KNOWS|etc"}\n'
+        "  ]\n"
+        "}\n\n"
+    )
+    if existing_ontology:
+        system_prompt += f"Existing ontology for reference:\n{existing_ontology}\n\n"
+
+    try:
+        response = litellm.completion(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": numbered},
+            ],
+            temperature=0.0,
+        )
+    except Exception as e:
+        raise LLMError(f"LLM call failed: {e}") from e
+
+    content = response.choices[0].message.content
+    if not content:
+        raise LLMError("LLM returned empty response for batch ontology inference")
+
+    cleaned = content.strip()
+    cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
+    cleaned = re.sub(r"\s*```$", "", cleaned)
+
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError as e:
+        raise LLMError(f"Failed to parse batch ontology response: {e}\nRaw: {cleaned}") from e
+
+
 def build_merge_cypher(entities: list[dict[str, str]], relationships: list[dict[str, str]]) -> str:
     """Build MERGE Cypher statements from extracted entities and relationships.
 

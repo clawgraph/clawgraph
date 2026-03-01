@@ -165,6 +165,40 @@ def _find_label(name: str, entities: list[dict[str, str]]) -> str:
     return "Unknown"
 
 
+@app.command("add-batch")
+def add_batch(
+    statements: list[str] = typer.Argument(..., help="Multiple statements to store."),
+    output: OutputFormat = typer.Option(
+        OutputFormat.human, "--output", "-o", help="Output format."
+    ),
+    model: Optional[str] = typer.Option(
+        None, "--model", "-m", help="Override LLM model."
+    ),
+) -> None:
+    """Add multiple facts in a single LLM call (faster for batch operations)."""
+    from clawgraph.memory import Memory
+
+    console.print(f"[bold blue]Batch adding {len(statements)} statements...[/bold blue]")
+
+    try:
+        mem = Memory(model=model)
+        result = mem.add_batch(statements)
+    except Exception as e:
+        console.print(f"[bold red]Error:[/bold red] {e}")
+        raise typer.Exit(1)
+
+    if output == OutputFormat.human:
+        console.print(f"[dim]  Entities: {len(result.entities)}[/dim]")
+        console.print(f"[dim]  Relationships: {len(result.relationships)}[/dim]")
+        console.print(f"[dim]  Executed: {result.executed} statements[/dim]")
+        if result.ok:
+            console.print("[bold green]Done![/bold green]")
+        else:
+            console.print(f"[bold yellow]Completed with {len(result.errors)} error(s)[/bold yellow]")
+    else:
+        _output(result.to_dict(), output)
+
+
 @app.command()
 def query(
     question: str = typer.Argument(..., help="Natural language question to query."),
