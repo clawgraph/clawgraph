@@ -2,17 +2,43 @@
 
 from __future__ import annotations
 
+import json
+import os
+import re
 from typing import Any
 
-import litellm
-
 from clawgraph.config import load_config
+
+
+def _ensure_env() -> None:
+    """Load .env file and set litellm env var for fast imports."""
+    os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
+
+    # Load .env from project root or cwd if present
+    env_path = os.path.join(os.getcwd(), ".env")
+    if os.path.exists(env_path):
+        with open(env_path) as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, _, val = line.partition("=")
+                key = key.strip()
+                val = val.strip().strip("'\"")
+                if key and val:
+                    os.environ.setdefault(key, val)
+
+
+_ensure_env()
+
+import litellm  # noqa: E402 — must come after env setup
 
 
 def generate_cypher(
     statement: str,
     ontology_context: str = "",
     model: str | None = None,
+    mode: str = "write",
 ) -> str:
     """Convert a natural language statement into a Cypher query.
 
@@ -20,26 +46,37 @@ def generate_cypher(
         statement: Natural language input from the user.
         ontology_context: Current schema/ontology for context.
         model: LLM model to use. Defaults to config value.
+        mode: 'write' for MERGE/store, 'read' for MATCH/query.
 
     Returns:
         A Cypher query string.
+
+    Raises:
+        LLMError: If the LLM call fails or returns empty content.
     """
     config = load_config()
-    model = model or config.get("llm", {}).get("model", "gpt-4")
+    model = model or config.get("llm", {}).get("model", "gpt-4o-mini")
+    temperature = config.get("llm", {}).get("temperature", 0.0)
 
-    system_prompt = _build_system_prompt(ontology_context)
+    system_prompt = _build_write_prompt(ontology_context) if mode == "write" else _build_read_prompt(ontology_context)
 
-    response = litellm.completion(
-        model=model,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": statement},
-        ],
-        temperature=0.0,
-    )
+    try:
+        response = litellm.completion(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": statement},
+            ],
+            temperature=temperature,
+        )
+    except Exception as e:
+        raise LLMError(f"LLM call failed: {e}") from e
 
-    cypher = response.choices[0].message.content.strip()
-    return cypher
+    content = response.choices[0].message.content
+    if not content:
+        raise LLMError("LLM returned empty response")
+
+    return content.strip()
 
 
 def infer_ontology(
@@ -55,52 +92,139 @@ def infer_ontology(
         model: LLM model to use.
 
     Returns:
-        Dict with 'nodes', 'relationships', and 'properties'.
+        Dict with 'nodes' and 'relationships'.
+
+    Raises:
+        LLMError: If the LLM call fails or response is not valid JSON.
     """
     config = load_config()
-    model = model or config.get("llm", {}).get("model", "gpt-4")
+    model = model or config.get("llm", {}).get("model", "gpt-4o-mini")
 
     system_prompt = (
-        "You are a graph ontology designer. Given a natural language statement, "
-        "extract the node labels, relationship types, and properties needed to "
-        "represent it in a graph database.\n\n"
-        "Respond with valid JSON only:\n"
-        '{"nodes": [{"label": "...", "properties": {"key": "type"}}], '
-        '"relationships": [{"type": "...", "from": "...", "to": "...", '
-        '"properties": {"key": "type"}}]}\n\n'
+        "You are a graph ontology designer for a Kùzu embedded graph database.\n"
+        "Given a natural language statement, extract entities and relationships.\n\n"
+        "IMPORTANT: We use a GENERIC schema:\n"
+        "  - All entities are stored as Entity nodes with properties: name (STRING, PK), label (STRING)\n"
+        "  - All relationships use Relates with property: type (STRING)\n\n"
+        "Extract the entities and relationship from the statement.\n"
+        "Respond with ONLY valid JSON (no markdown fences):\n"
+        "{\n"
+        '  "entities": [\n'
+        '    {"name": "actual name", "label": "Person|Organization|Place|etc"}\n'
+        "  ],\n"
+        '  "relationships": [\n'
+        '    {"from": "entity name", "to": "entity name", "type": "WORKS_AT|KNOWS|etc"}\n'
+        "  ]\n"
+        "}\n\n"
     )
     if existing_ontology:
-        system_prompt += f"Existing ontology:\n{existing_ontology}\n\n"
-        system_prompt += "Reuse existing labels and types where possible.\n"
-
-    response = litellm.completion(
-        model=model,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": statement},
-        ],
-        temperature=0.0,
-    )
-
-    import json
+        system_prompt += f"Existing ontology for reference:\n{existing_ontology}\n\n"
 
     try:
-        return json.loads(response.choices[0].message.content.strip())
+        response = litellm.completion(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": statement},
+            ],
+            temperature=0.0,
+        )
+    except Exception as e:
+        raise LLMError(f"LLM call failed: {e}") from e
+
+    content = response.choices[0].message.content
+    if not content:
+        raise LLMError("LLM returned empty response for ontology inference")
+
+    # Strip code fences if present
+    cleaned = content.strip()
+    cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
+    cleaned = re.sub(r"\s*```$", "", cleaned)
+
+    try:
+        return json.loads(cleaned)
     except json.JSONDecodeError as e:
-        raise LLMError(f"Failed to parse ontology response: {e}") from e
+        raise LLMError(f"Failed to parse ontology response: {e}\nRaw: {cleaned}") from e
 
 
-def _build_system_prompt(ontology_context: str) -> str:
-    """Build the system prompt for Cypher generation."""
+def build_merge_cypher(entities: list[dict[str, str]], relationships: list[dict[str, str]]) -> str:
+    """Build MERGE Cypher statements from extracted entities and relationships.
+
+    This generates Kùzu-compatible MERGE queries using the generic
+    Entity/Relates schema.
+
+    Args:
+        entities: List of dicts with 'name' and 'label'.
+        relationships: List of dicts with 'from', 'to', and 'type'.
+
+    Returns:
+        Multi-line Cypher string with MERGE statements.
+    """
+    lines: list[str] = []
+
+    for entity in entities:
+        name = entity["name"].replace("'", "\\'")
+        label = entity.get("label", "Unknown").replace("'", "\\'")
+        lines.append(
+            f"MERGE (e:Entity {{name: '{name}'}}) SET e.label = '{label}';"
+        )
+
+    for rel in relationships:
+        from_name = rel["from"].replace("'", "\\'")
+        to_name = rel["to"].replace("'", "\\'")
+        rel_type = rel.get("type", "RELATED_TO").replace("'", "\\'")
+        lines.append(
+            f"MATCH (a:Entity {{name: '{from_name}'}}), (b:Entity {{name: '{to_name}'}}) "
+            f"MERGE (a)-[r:Relates {{type: '{rel_type}'}}]->(b);"
+        )
+
+    return "\n".join(lines)
+
+
+def _build_write_prompt(ontology_context: str) -> str:
+    """Build the system prompt for Cypher write (MERGE) generation."""
     prompt = (
-        "You are a Cypher query generator for a Kùzu graph database. "
-        "Given a natural language statement, generate a valid Cypher query "
-        "to store or retrieve the information.\n\n"
-        "Rules:\n"
-        "- Output ONLY the Cypher query, no explanation\n"
+        "You are a Cypher query generator for a Kùzu embedded graph database.\n"
+        "Given a natural language statement about facts or relationships,\n"
+        "generate Cypher MERGE queries to store the information.\n\n"
+        "CRITICAL RULES:\n"
+        "- Output ONLY Cypher queries, no explanation or markdown fences\n"
         "- Use MERGE instead of CREATE to prevent duplicates\n"
-        "- Use parameterized values where appropriate\n"
-        "- Follow the existing ontology schema if provided\n\n"
+        "- The database uses a GENERIC schema:\n"
+        "  - Entity nodes: Entity(name STRING PRIMARY KEY, label STRING)\n"
+        "  - Relationships: Relates(FROM Entity TO Entity, type STRING)\n"
+        "- For entities: MERGE (e:Entity {name: 'Name'}) SET e.label = 'Type'\n"
+        "- For relationships: First MATCH both entities, then MERGE the relationship\n"
+        "  MATCH (a:Entity {name: 'A'}), (b:Entity {name: 'B'}) "
+        "MERGE (a)-[r:Relates {type: 'REL_TYPE'}]->(b)\n"
+        "- Each statement should be on its own line ending with ;\n"
+        "- Do NOT use CREATE NODE TABLE or CREATE REL TABLE\n"
+        "- Do NOT use parameters ($param) — use literal string values\n\n"
+    )
+    if ontology_context:
+        prompt += f"Current ontology:\n{ontology_context}\n"
+    return prompt
+
+
+def _build_read_prompt(ontology_context: str) -> str:
+    """Build the system prompt for Cypher read (MATCH) generation."""
+    prompt = (
+        "You are a Cypher query generator for a Kùzu embedded graph database.\n"
+        "Given a natural language question, generate a Cypher MATCH query\n"
+        "to retrieve the requested information.\n\n"
+        "CRITICAL RULES:\n"
+        "- Output ONLY the Cypher query, no explanation or markdown fences\n"
+        "- The database uses a GENERIC schema:\n"
+        "  - Entity nodes: Entity(name STRING PRIMARY KEY, label STRING)\n"
+        "  - Relationships: Relates(FROM Entity TO Entity, type STRING)\n"
+        "- Use MATCH and RETURN\n"
+        "- For finding entities: MATCH (e:Entity {label: 'Type'}) RETURN e.name, e.label\n"
+        "- For finding relationships: MATCH (a:Entity)-[r:Relates]->(b:Entity) "
+        "WHERE r.type = 'REL_TYPE' RETURN a.name, r.type, b.name\n"
+        "- For general queries: MATCH (a:Entity)-[r:Relates]->(b:Entity) "
+        "RETURN a.name, r.type, b.name\n"
+        "- Do NOT use parameters ($param) — use literal string values\n"
+        "- Output a single query only, no semicolons\n\n"
     )
     if ontology_context:
         prompt += f"Current ontology:\n{ontology_context}\n"
