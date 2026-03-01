@@ -15,6 +15,7 @@ def _ensure_env() -> None:
     os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
 
     # Load .env from project root or cwd if present
+    # .env values OVERRIDE system env vars so the project config wins
     env_path = os.path.join(os.getcwd(), ".env")
     if os.path.exists(env_path):
         with open(env_path) as f:
@@ -26,7 +27,7 @@ def _ensure_env() -> None:
                 key = key.strip()
                 val = val.strip().strip("'\"")
                 if key and val:
-                    os.environ.setdefault(key, val)
+                    os.environ[key] = val
 
 
 _ensure_env()
