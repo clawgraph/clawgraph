@@ -178,7 +178,7 @@ class Memory:
         self,
         entities: list[dict[str, str]],
         relationships: list[dict[str, str]],
-    ) -> "AddResult":
+    ) -> AddResult:
         """Execute inferred entities/relationships against the DB."""
         cypher = build_merge_cypher(entities, relationships)
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from enum import Enum
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import typer
 from rich.console import Console
@@ -67,7 +67,7 @@ def add(
     output: OutputFormat = typer.Option(
         OutputFormat.human, "--output", "-o", help="Output format."
     ),
-    model: Optional[str] = typer.Option(
+    model: str | None = typer.Option(
         None, "--model", "-m", help="Override LLM model."
     ),
 ) -> None:
@@ -103,7 +103,7 @@ def add(
 
     # Step 2: Build Cypher MERGE statements
     cypher = build_merge_cypher(entities, relationships)
-    console.print(f"[dim]  Generated Cypher:[/dim]")
+    console.print("[dim]  Generated Cypher:[/dim]")
 
     # Step 3: Execute each statement
     db = GraphDB()
@@ -171,7 +171,7 @@ def add_batch(
     output: OutputFormat = typer.Option(
         OutputFormat.human, "--output", "-o", help="Output format."
     ),
-    model: Optional[str] = typer.Option(
+    model: str | None = typer.Option(
         None, "--model", "-m", help="Override LLM model."
     ),
 ) -> None:
@@ -205,7 +205,7 @@ def query(
     output: OutputFormat = typer.Option(
         OutputFormat.human, "--output", "-o", help="Output format."
     ),
-    model: Optional[str] = typer.Option(
+    model: str | None = typer.Option(
         None, "--model", "-m", help="Override LLM model."
     ),
 ) -> None:
@@ -299,7 +299,7 @@ def ontology(
 
 @app.command()
 def export(
-    path: Optional[Path] = typer.Argument(
+    path: Path | None = typer.Argument(
         None, help="Output file path. Defaults to stdout."
     ),
     output: OutputFormat = typer.Option(
@@ -329,8 +329,8 @@ def export(
 
 @app.command()
 def config(
-    key: Optional[str] = typer.Argument(None, help="Config key (e.g., llm.model)."),
-    value: Optional[str] = typer.Argument(None, help="Config value to set."),
+    key: str | None = typer.Argument(None, help="Config key (e.g., llm.model)."),
+    value: str | None = typer.Argument(None, help="Config value to set."),
 ) -> None:
     """Get or set configuration values."""
     from clawgraph.config import get_config_value, load_config, set_config_value

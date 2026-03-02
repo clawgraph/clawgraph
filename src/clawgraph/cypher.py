@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import re
 
-
 # Patterns that should never appear in generated Cypher
 _DANGEROUS_PATTERNS: list[tuple[str, str]] = [
     (r"\bDROP\b", "DROP statements are not allowed"),

@@ -1,6 +1,5 @@
 """Tests for ontology management."""
 
-import json
 from pathlib import Path
 
 from clawgraph.ontology import Ontology

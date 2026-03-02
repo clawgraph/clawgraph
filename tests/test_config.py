@@ -3,7 +3,7 @@
 from pathlib import Path
 from unittest.mock import patch
 
-from clawgraph.config import load_config, _deep_merge
+from clawgraph.config import _deep_merge, load_config
 
 
 class TestLoadConfig:

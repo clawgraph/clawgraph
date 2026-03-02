@@ -2,7 +2,7 @@
 
 from unittest.mock import MagicMock, patch
 
-from clawgraph.llm import build_merge_cypher, LLMError
+from clawgraph.llm import LLMError, build_merge_cypher
 
 
 class TestBuildMergeCypher:

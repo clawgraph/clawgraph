@@ -7,7 +7,6 @@ from typing import Any
 
 import yaml
 
-
 _DEFAULT_CONFIG: dict[str, Any] = {
     "llm": {
         "model": "gpt-4o-mini",
