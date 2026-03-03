@@ -155,11 +155,13 @@ class Memory:
 
         return self._execute_inferred(entities, relationships)
 
-    def query(self, question: str) -> list[dict[str, Any]]:
+    def query(self, question: str, min_confidence: float | None = None) -> list[dict[str, Any]]:
         """Query graph memory with natural language.
 
         Args:
             question: Natural language question.
+            min_confidence: If set, only return results where
+                            relationship confidence >= this value (0.0-1.0).
 
         Returns:
             List of result rows as dictionaries.
@@ -177,7 +179,15 @@ class Memory:
         if not validation:
             raise LLMError(f"Generated invalid Cypher: {validation.errors}")
 
-        return self._db.execute(cypher)
+        results = self._db.execute(cypher)
+
+        if min_confidence is not None:
+            results = [
+                row for row in results
+                if float(row.get("r.confidence", 1.0)) >= min_confidence
+            ]
+
+        return results
 
     def entities(self) -> list[dict[str, Any]]:
         """Get all entities in the graph."""
