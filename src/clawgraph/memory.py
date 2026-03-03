@@ -171,12 +171,12 @@ class Memory:
             List of result rows as dictionaries.
         """
         if source_agent is not None:
-            safe = source_agent.replace("'", "\\'")
             return self._db.execute(
                 "MATCH (a:Entity)-[r:Relates]->(b:Entity) "
-                f"WHERE r.source_agent = '{safe}' "
+                "WHERE r.source_agent = $agent "
                 "RETURN a.name, r.type, b.name, "
-                "r.source_agent, r.source_session, r.source_input"
+                "r.source_agent, r.source_session, r.source_input",
+                parameters={"agent": source_agent},
             )
 
         raw_cypher = generate_cypher(
