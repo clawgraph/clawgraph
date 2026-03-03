@@ -124,10 +124,12 @@ class GraphDB:
         )
         self.create_rel_table(
             "Relates", "Entity", "Entity",
-            {"type": "STRING", "created_at": "STRING"},
+            {"type": "STRING", "created_at": "STRING",
+             "confidence": "FLOAT DEFAULT 1.0"},
         )
         # Migrate existing DBs: add timestamp columns if missing
         self._migrate_timestamps()
+        self._migrate_confidence()
 
     def get_all_entities(self) -> list[dict[str, Any]]:
         """Get all entities in the graph."""
@@ -140,7 +142,8 @@ class GraphDB:
         if not self.has_rel_table("Relates"):
             return []
         return self.execute(
-            "MATCH (a:Entity)-[r:Relates]->(b:Entity) RETURN a.name, r.type, b.name"
+            "MATCH (a:Entity)-[r:Relates]->(b:Entity) "
+            "RETURN a.name, r.type, b.name, r.confidence"
         )
 
     def close(self) -> None:
@@ -255,6 +258,20 @@ class GraphDB:
                 self._conn.execute(stmt)
             except Exception:
                 pass  # Column likely already exists
+
+    def _migrate_confidence(self) -> None:
+        """Add confidence column to Relates table if missing.
+
+        This is a no-op for new databases. For databases created before
+        confidence scoring was added, it attempts to ALTER TABLE. Failures
+        are silently ignored (column may already exist).
+        """
+        try:
+            self._conn.execute(
+                "ALTER TABLE Relates ADD confidence FLOAT DEFAULT 1.0"
+            )
+        except Exception:
+            pass  # Column likely already exists
 
     @staticmethod
     def now_iso() -> str:
