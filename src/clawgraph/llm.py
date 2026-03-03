@@ -108,6 +108,8 @@ def infer_ontology(
         "  - All entities are stored as Entity nodes with properties: name (STRING, PK), label (STRING)\n"
         "  - All relationships use Relates with property: type (STRING)\n\n"
         "Extract the entities and relationship from the statement.\n"
+        "For each relationship, estimate a confidence score between 0.0 and 1.0 "
+        "indicating how certain the relationship is based on the statement.\n"
         "If ALLOWED labels or relationship types are specified below, you MUST only use those.\n"
         "Respond with ONLY valid JSON (no markdown fences):\n"
         "{\n"
@@ -115,7 +117,7 @@ def infer_ontology(
         '    {"name": "actual name", "label": "Person|Organization|Place|etc"}\n'
         "  ],\n"
         '  "relationships": [\n'
-        '    {"from": "entity name", "to": "entity name", "type": "WORKS_AT|KNOWS|etc"}\n'
+        '    {"from": "entity name", "to": "entity name", "type": "WORKS_AT|KNOWS|etc", "confidence": 0.95}\n'
         "  ]\n"
         "}\n\n"
     )
@@ -182,6 +184,8 @@ def infer_ontology_batch(
         "  - All entities are stored as Entity nodes with properties: name (STRING, PK), label (STRING)\n"
         "  - All relationships use Relates with property: type (STRING)\n\n"
         "Deduplicate entities — if the same entity appears in multiple statements, include it only once.\n"
+        "For each relationship, estimate a confidence score between 0.0 and 1.0 "
+        "indicating how certain the relationship is based on the statements.\n"
         "If ALLOWED labels or relationship types are specified below, you MUST only use those.\n"
         "Respond with ONLY valid JSON (no markdown fences):\n"
         "{\n"
@@ -189,7 +193,7 @@ def infer_ontology_batch(
         '    {"name": "actual name", "label": "Person|Organization|Place|etc"}\n'
         "  ],\n"
         '  "relationships": [\n'
-        '    {"from": "entity name", "to": "entity name", "type": "WORKS_AT|KNOWS|etc"}\n'
+        '    {"from": "entity name", "to": "entity name", "type": "WORKS_AT|KNOWS|etc", "confidence": 0.95}\n'
         "  ]\n"
         "}\n\n"
     )
@@ -252,9 +256,11 @@ def build_merge_cypher(entities: list[dict[str, str]], relationships: list[dict[
         from_name = rel["from"].replace("'", "\\'")
         to_name = rel["to"].replace("'", "\\'")
         rel_type = rel.get("type", "RELATED_TO").replace("'", "\\'")
+        confidence = min(1.0, max(0.0, float(rel.get("confidence", 1.0))))
         lines.append(
             f"MATCH (a:Entity {{name: '{from_name}'}}), (b:Entity {{name: '{to_name}'}}) "
-            f"MERGE (a)-[r:Relates {{type: '{rel_type}'}}]->(b);"
+            f"MERGE (a)-[r:Relates {{type: '{rel_type}'}}]->(b) "
+            f"SET r.confidence = {confidence};"
         )
 
     return "\n".join(lines)
