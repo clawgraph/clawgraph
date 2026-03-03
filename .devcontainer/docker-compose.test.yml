@@ -15,6 +15,7 @@ services:
     command: >
       bash -c "
         echo '=== ClawGraph Unit Tests ===' &&
+        pip install -e '.[dev]' &&
         python -m pytest tests/ -v &&
         echo '=== All tests passed ==='
       "
@@ -33,6 +34,7 @@ services:
     command: >
       bash -c "
         echo '=== ClawGraph Integration Tests ===' &&
+        pip install -e '.[dev]' &&
         clawgraph add 'Alice is an engineer at Acme Corp' &&
         clawgraph add 'Bob manages the design team at Acme' &&
         clawgraph query 'Who works at Acme?' --output json &&
@@ -84,6 +86,7 @@ services:
     command:
       - |
         echo '=== OpenClaw + ClawGraph Agent Test ==='
+        pip install -e '.[dev]'
         echo ''
         echo 'Step 1: Ask agent to store a fact via ClawGraph skill'
         openclaw agent --message "Use your ClawGraph memory skill to store: Alice is a data scientist at Google"

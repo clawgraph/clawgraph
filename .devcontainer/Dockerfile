@@ -5,16 +5,13 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y nodejs \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Install ClawGraph from source
-WORKDIR /workspace
-COPY . /workspace/
-RUN pip install --no-cache-dir -e ".[dev]"
-
 # Install OpenClaw globally (npm package is "openclaw")
 RUN npm install -g openclaw@latest
 
 # Create ClawGraph + OpenClaw config directories
 RUN mkdir -p /root/.clawgraph /root/.openclaw/workspace/skills
+
+WORKDIR /workspace
 
 # Default command
 CMD ["bash"]
