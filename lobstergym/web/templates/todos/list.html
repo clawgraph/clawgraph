@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Todos — LobsterGym{% endblock %}
+{% block content %}
+<h1>✅ Todo List</h1>
+
+<div class="card">
+  <form action="/todos/add" method="POST" style="display:flex; gap:0.5rem;">
+    <input type="text" name="text" placeholder="What needs to be done?" required style="margin-bottom:0;">
+    <button type="submit" class="btn btn-primary">Add</button>
+  </form>
+</div>
+
+{% if items %}
+<div class="card">
+  <table>
+    <thead>
+      <tr><th>Status</th><th>Task</th><th>Actions</th></tr>
+    </thead>
+    <tbody>
+      {% for item in items %}
+      <tr>
+        <td>
+          <form action="/todos/toggle/{{ item.id }}" method="POST" style="display:inline;">
+            <button type="submit" class="btn btn-sm {% if item.done %}btn-success{% else %}btn-secondary{% endif %}">
+              {{ "✓" if item.done else "○" }}
+            </button>
+          </form>
+        </td>
+        <td style="{% if item.done %}text-decoration: line-through; color: #999;{% endif %}">
+          {{ item.text }}
+        </td>
+        <td>
+          <form action="/todos/delete/{{ item.id }}" method="POST" style="display:inline;">
+            <button type="submit" class="btn btn-danger btn-sm">✕</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="card">
+  <p class="text-muted">No todos yet. Add one above!</p>
+</div>
+{% endif %}
+{% endblock %}

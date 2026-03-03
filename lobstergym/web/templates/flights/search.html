@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Search Flights — LobsterGym{% endblock %}
+{% block content %}
+<h1>✈️ Flight Search</h1>
+<div class="card">
+  <form action="/flights/results" method="POST">
+    <div class="form-row">
+      <div>
+        <label for="origin">Origin (airport code)</label>
+        <input type="text" id="origin" name="origin" placeholder="SFO" required maxlength="3">
+      </div>
+      <div>
+        <label for="destination">Destination (airport code)</label>
+        <input type="text" id="destination" name="destination" placeholder="JFK" required maxlength="3">
+      </div>
+    </div>
+    <label for="date">Travel Date</label>
+    <input type="date" id="date" name="date" value="2026-04-10" required>
+    <button type="submit" class="btn btn-primary">Search Flights</button>
+  </form>
+</div>
+{% endblock %}

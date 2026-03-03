@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Flight Results — LobsterGym{% endblock %}
+{% block content %}
+<h1>✈️ Flights: {{ origin }} → {{ dest }}</h1>
+<p class="text-muted mb-2">Date: {{ date }}</p>
+
+{% if flights %}
+<table>
+  <thead>
+    <tr>
+      <th>Flight</th>
+      <th>Airline</th>
+      <th>Depart</th>
+      <th>Arrive</th>
+      <th>Price</th>
+      <th>Seats Left</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for f in flights %}
+    <tr>
+      <td>{{ f.id }}</td>
+      <td>{{ f.airline }}</td>
+      <td>{{ f.depart }}</td>
+      <td>{{ f.arrive }}</td>
+      <td>${{ f.price }}</td>
+      <td>{{ f.seats }}</td>
+      <td><a href="/flights/book/{{ f.id }}" class="btn btn-success btn-sm">Book</a></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<div class="card">
+  <p>No flights found for this route. Try <strong>SFO → JFK</strong> or <strong>LAX → ORD</strong>.</p>
+</div>
+{% endif %}
+
+<a href="/flights" class="btn btn-secondary mt-2">← New Search</a>
+{% endblock %}

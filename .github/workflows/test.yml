@@ -5,11 +5,23 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      run_eval:
+        description: "Run LobsterGym eval pipeline"
+        type: boolean
+        default: false
+  schedule:
+    # Nightly eval at 06:00 UTC (midnight US Central / 4pm AEST)
+    - cron: "0 6 * * *"
 
 permissions:
   contents: read
 
 jobs:
+  # ---------------------------------------------------------------
+  # Unit tests — fast, no Docker, no API keys
+  # ---------------------------------------------------------------
   test:
     runs-on: ${{ matrix.os }}
     strategy:
@@ -38,3 +50,80 @@ jobs:
 
       - name: Run tests
         run: pytest --tb=short -q
+
+  # ---------------------------------------------------------------
+  # LobsterGym — build mock containers & validate they start
+  # ---------------------------------------------------------------
+  lobstergym-build:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build lobstergym-web image
+        run: docker build -t lobstergym-web lobstergym/web/
+
+      - name: Build lobstergym-api image
+        run: docker build -t lobstergym-api lobstergym/api/
+
+      - name: Smoke-test lobstergym-web
+        run: |
+          docker run -d --name web-test -p 8080:8080 lobstergym-web
+          sleep 3
+          curl -sf http://localhost:8080/health
+          docker stop web-test
+
+      - name: Smoke-test lobstergym-api
+        run: |
+          docker run -d --name api-test -p 8090:8090 lobstergym-api
+          sleep 3
+          curl -sf http://localhost:8090/health
+          docker stop api-test
+
+  # ---------------------------------------------------------------
+  # LobsterGym Eval — full eval pipeline (manual or scheduled)
+  # Requires OPENAI_API_KEY secret to be configured.
+  # ---------------------------------------------------------------
+  lobstergym-eval:
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.run_eval == 'true')
+    needs: lobstergym-build
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start mock services
+        working-directory: lobstergym
+        run: |
+          docker compose build lobstergym-web lobstergym-api
+          docker compose up -d lobstergym-web lobstergym-api
+
+      - name: Wait for healthy services
+        run: |
+          for i in $(seq 1 30); do
+            (curl -sf http://localhost:8080/health && curl -sf http://localhost:8090/health) && break
+            sleep 2
+          done
+
+      - name: Run eval — ClawGraph profile
+        working-directory: lobstergym
+        run: docker compose run --rm eval-clawgraph
+
+      - name: Run eval — Default profile
+        working-directory: lobstergym
+        run: docker compose run --rm eval-default
+
+      - name: Upload eval reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: lobstergym-reports
+          path: lobstergym/reports/*.json
+          if-no-files-found: warn
+
+      - name: Tear down
+        if: always()
+        working-directory: lobstergym
+        run: docker compose down -v

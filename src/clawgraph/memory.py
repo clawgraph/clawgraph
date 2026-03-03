@@ -20,10 +20,21 @@ Usage::
     mem.entities()
     mem.relationships()
     mem.export()
+
+    # Persistence — init_facts bootstraps the graph on first run
+    mem = Memory(init_facts=["Alice is a data scientist"])
+
+    # Snapshots
+    mem.save_snapshot("backup.tar.gz")
+    restored = Memory.from_snapshot("backup.tar.gz", "/tmp/restored_db")
+
+    # Config injection — bypass config files entirely
+    mem = Memory(config={"llm": {"model": "gpt-4o"}, "db": {"path": ":memory:"}})
 """
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from clawgraph.cypher import sanitize_cypher, validate_cypher
@@ -53,6 +64,8 @@ class Memory:
         allowed_labels: list[str] | None = None,
         allowed_relationship_types: list[str] | None = None,
         ontology: Ontology | None = None,
+        init_facts: list[str] | None = None,
+        config: dict[str, Any] | None = None,
     ) -> None:
         """Initialize the memory layer.
 
@@ -67,7 +80,19 @@ class Memory:
             ontology: Pass a pre-configured Ontology instance directly.
                       Overrides ontology_dir, allowed_labels, and
                       allowed_relationship_types if provided.
+            init_facts: List of facts to seed on first initialization.
+                        Uses MERGE so repeated init is idempotent.
+            config: Dict to override config-file values. Supports
+                    keys like ``{"llm": {"model": "..."}, "db": {"path": "..."}}``.
+                    Explicit ``db_path`` / ``model`` params take priority.
         """
+        # Apply config dict if provided
+        if config:
+            if db_path is None:
+                db_path = config.get("db", {}).get("path")
+            if model is None:
+                model = config.get("llm", {}).get("model")
+
         self._db = GraphDB(db_path=db_path)
         self._db.ensure_base_schema()
         if ontology is not None:
@@ -79,6 +104,10 @@ class Memory:
                 allowed_relationship_types=allowed_relationship_types,
             )
         self._model = model
+
+        # Seed initial facts (idempotent via MERGE)
+        if init_facts:
+            self.add_batch(init_facts)
 
     def add(self, statement: str) -> AddResult:
         """Add a single fact to graph memory.
@@ -173,6 +202,40 @@ class Memory:
     def close(self) -> None:
         """Close the database connection."""
         self._db.close()
+
+    def save_snapshot(self, output_path: str | Path) -> Path:
+        """Save a snapshot of the database as a .tar.gz archive.
+
+        Args:
+            output_path: Path for the output archive.
+
+        Returns:
+            The Path to the created archive.
+        """
+        return self._db.save_snapshot(output_path)
+
+    @classmethod
+    def from_snapshot(
+        cls,
+        archive_path: str | Path,
+        target_dir: str | Path,
+        **kwargs: Any,
+    ) -> Memory:
+        """Restore a Memory instance from a snapshot archive.
+
+        Args:
+            archive_path: Path to the .tar.gz archive.
+            target_dir: Directory to extract the DB into.
+            **kwargs: Additional arguments forwarded to Memory.__init__()
+                      (e.g., model, ontology_dir, allowed_labels).
+
+        Returns:
+            A new Memory instance backed by the restored database.
+        """
+        restored_db = GraphDB.load_snapshot(archive_path, target_dir)
+        db_path = restored_db.db_path
+        restored_db.close()
+        return cls(db_path=db_path, **kwargs)
 
     def _execute_inferred(
         self,

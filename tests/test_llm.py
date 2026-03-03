@@ -43,6 +43,13 @@ class TestBuildMergeCypher:
         cypher = build_merge_cypher(entities, [])
         assert "Unknown" in cypher
 
+    def test_includes_updated_at_timestamp(self) -> None:
+        entities = [{"name": "John", "label": "Person"}]
+        cypher = build_merge_cypher(entities, [])
+        assert "updated_at" in cypher
+        # Timestamp should be ISO format with T separator
+        assert "T" in cypher
+
 
 class TestGenerateCypher:
     """Tests for generate_cypher with mocked LLM."""

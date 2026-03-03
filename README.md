@@ -4,6 +4,8 @@
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
+[![Tests](https://github.com/clawgraph/clawgraph/actions/workflows/test.yml/badge.svg)](https://github.com/clawgraph/clawgraph/actions/workflows/test.yml)
+[![PyPI](https://img.shields.io/pypi/v/clawgraph.svg)](https://pypi.org/project/clawgraph/)
 
 **Official site**: [clawgraph.ai](https://clawgraph.ai)
 
