@@ -57,7 +57,7 @@ class TestConfidenceSchema:
         assert abs(rels[0]["r.confidence"] - 0.9) < 0.001
 
     def test_migration_adds_confidence(self) -> None:
-        """Calling ensure_base_schema twice doesn't error (migration idempotent)."""
+        """Verify ensure_base_schema is idempotent with confidence column."""
         db = GraphDB(db_path=":memory:")
         db.ensure_base_schema()
         db.ensure_base_schema()  # Should not raise
