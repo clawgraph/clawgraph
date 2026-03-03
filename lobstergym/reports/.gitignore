@@ -1,0 +1,3 @@
+# Eval reports (generated)
+*.json
+!.gitignore

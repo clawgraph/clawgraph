@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Order Confirmed — LobsterGym Shop{% endblock %}
+{% block content %}
+<h1>🎉 Order Confirmed!</h1>
+<div class="card">
+  <p><strong>Order ID:</strong> <span class="badge badge-success">{{ order.order_id }}</span></p>
+  <p><strong>Ship to:</strong> {{ order.shipping_name }}</p>
+  <p><strong>Address:</strong> {{ order.shipping_address }}</p>
+  <p><strong>Total:</strong> ${{ "%.2f"|format(order.total) }}</p>
+
+  <h3 class="mt-2">Items</h3>
+  <table>
+    <thead><tr><th>Product</th><th>Qty</th><th>Price</th></tr></thead>
+    <tbody>
+      {% for item in order.items %}
+      <tr>
+        <td>{{ item.name }}</td>
+        <td>{{ item.quantity }}</td>
+        <td>${{ "%.2f"|format(item.price * item.quantity) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<a href="/shop" class="btn btn-secondary mt-2">← Back to Shop</a>
+{% endblock %}

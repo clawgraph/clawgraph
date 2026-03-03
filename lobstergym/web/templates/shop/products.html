@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Shop — LobsterGym{% endblock %}
+{% block content %}
+<h1>🛒 LobsterGym Shop</h1>
+<p class="text-muted mb-2">Browse our crustacean-themed tech gear.</p>
+
+<div class="grid grid-3">
+  {% for p in products %}
+  <div class="card">
+    <h3>{{ p.name }}</h3>
+    <p class="text-success" style="font-size:1.2rem; font-weight:700;">${{ "%.2f"|format(p.price) }}</p>
+    <p class="text-muted">{{ p.stock }} in stock</p>
+    <a href="/shop/product/{{ p.id }}" class="btn btn-primary btn-sm mt-1">View Details</a>
+  </div>
+  {% endfor %}
+</div>
+
+<a href="/shop/cart" class="btn btn-secondary mt-2">🛒 View Cart</a>
+{% endblock %}

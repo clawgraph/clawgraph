@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Checkout — LobsterGym Shop{% endblock %}
+{% block content %}
+<h1>💳 Checkout</h1>
+
+<div class="card">
+  <h3>Order Summary</h3>
+  <table>
+    <thead><tr><th>Product</th><th>Qty</th><th>Subtotal</th></tr></thead>
+    <tbody>
+      {% for item in cart %}
+      <tr>
+        <td>{{ item.name }}</td>
+        <td>{{ item.quantity }}</td>
+        <td>${{ "%.2f"|format(item.price * item.quantity) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr><th colspan="2">Total</th><th>${{ "%.2f"|format(total) }}</th></tr>
+    </tfoot>
+  </table>
+</div>
+
+<div class="card mt-2">
+  <h3>Shipping Details</h3>
+  <form action="/shop/checkout" method="POST">
+    <label for="name">Full Name</label>
+    <input type="text" id="name" name="name" placeholder="Molty Lobster" required>
+    <label for="address">Shipping Address</label>
+    <textarea id="address" name="address" rows="3" placeholder="123 Reef Street, Ocean City" required></textarea>
+    <button type="submit" class="btn btn-success">Place Order</button>
+  </form>
+</div>
+{% endblock %}

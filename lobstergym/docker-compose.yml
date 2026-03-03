@@ -1,0 +1,189 @@
+version: "3.8"
+
+# =======================================================================
+# LobsterGym — Full evaluation stack
+#
+# Usage:
+#   docker compose -f lobstergym/docker-compose.yml up -d
+#   docker compose -f lobstergym/docker-compose.yml run eval-clawgraph
+#   docker compose -f lobstergym/docker-compose.yml run eval-default
+#   docker compose -f lobstergym/docker-compose.yml down
+# =======================================================================
+
+services:
+  # -------------------------------------------------------------------
+  # Mock website for browser-automation tasks
+  # -------------------------------------------------------------------
+  lobstergym-web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # -------------------------------------------------------------------
+  # Mock API for integration tasks
+  # -------------------------------------------------------------------
+  lobstergym-api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    ports:
+      - "8090:8090"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8090/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # -------------------------------------------------------------------
+  # OpenClaw gateway WITH ClawGraph skill (clawgraph profile)
+  # -------------------------------------------------------------------
+  openclaw-clawgraph:
+    build:
+      context: ..
+      dockerfile: .devcontainer/Dockerfile
+    ports:
+      - "18789:18789"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - LITELLM_LOCAL_MODEL_COST_MAP=True
+    volumes:
+      - ..:/workspace:cached
+      - openclaw-clawgraph-home:/root/.openclaw
+    working_dir: /workspace
+    depends_on:
+      lobstergym-web:
+        condition: service_healthy
+      lobstergym-api:
+        condition: service_healthy
+    command: >
+      bash -c "
+        echo '=== OpenClaw + ClawGraph Gateway ===' &&
+        mkdir -p /root/.openclaw/workspace/skills &&
+        cp -r /workspace/skills/clawgraph /root/.openclaw/workspace/skills/ &&
+        pip install -e /workspace 2>/dev/null &&
+        cat > /root/.openclaw/openclaw.json << 'CONF'
+        {
+          \"agent\": {
+            \"model\": \"openai/gpt-4o-mini\"
+          },
+          \"browser\": {
+            \"enabled\": true,
+            \"headless\": true,
+            \"noSandbox\": true,
+            \"ssrfPolicy\": {
+              \"dangerouslyAllowPrivateNetwork\": true
+            }
+          }
+        }
+      CONF
+        openclaw gateway --port 18789 --verbose
+      "
+
+  # -------------------------------------------------------------------
+  # OpenClaw gateway WITHOUT ClawGraph (default profile for comparison)
+  # -------------------------------------------------------------------
+  openclaw-default:
+    build:
+      context: ..
+      dockerfile: .devcontainer/Dockerfile
+    ports:
+      - "18790:18789"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+    volumes:
+      - ..:/workspace:cached
+      - openclaw-default-home:/root/.openclaw
+    working_dir: /workspace
+    depends_on:
+      lobstergym-web:
+        condition: service_healthy
+      lobstergym-api:
+        condition: service_healthy
+    command: >
+      bash -c "
+        echo '=== OpenClaw Default Gateway ===' &&
+        cat > /root/.openclaw/openclaw.json << 'CONF'
+        {
+          \"agent\": {
+            \"model\": \"openai/gpt-4o-mini\"
+          },
+          \"browser\": {
+            \"enabled\": true,
+            \"headless\": true,
+            \"noSandbox\": true,
+            \"ssrfPolicy\": {
+              \"dangerouslyAllowPrivateNetwork\": true
+            }
+          }
+        }
+      CONF
+        openclaw gateway --port 18789 --verbose
+      "
+
+  # -------------------------------------------------------------------
+  # Eval runner — ClawGraph profile
+  # -------------------------------------------------------------------
+  eval-clawgraph:
+    build:
+      context: ..
+      dockerfile: .devcontainer/Dockerfile
+    network_mode: "service:openclaw-clawgraph"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    volumes:
+      - ..:/workspace:cached
+      - openclaw-clawgraph-home:/root/.openclaw
+    working_dir: /workspace
+    depends_on:
+      - openclaw-clawgraph
+    entrypoint: ["bash", "-c"]
+    command:
+      - |
+        echo '🦞 LobsterGym Eval — ClawGraph Profile'
+        pip install -e /workspace 2>/dev/null
+        pip install requests 2>/dev/null
+        python -m lobstergym.eval.runner \
+          --profile clawgraph \
+          --output /workspace/lobstergym/reports/eval-clawgraph.json
+        echo ''
+        echo 'Report: lobstergym/reports/eval-clawgraph.json'
+
+  # -------------------------------------------------------------------
+  # Eval runner — Default profile (no ClawGraph)
+  # -------------------------------------------------------------------
+  eval-default:
+    build:
+      context: ..
+      dockerfile: .devcontainer/Dockerfile
+    network_mode: "service:openclaw-default"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    volumes:
+      - ..:/workspace:cached
+      - openclaw-default-home:/root/.openclaw
+    working_dir: /workspace
+    depends_on:
+      - openclaw-default
+    entrypoint: ["bash", "-c"]
+    command:
+      - |
+        echo '🦞 LobsterGym Eval — Default Profile'
+        pip install requests 2>/dev/null
+        python -m lobstergym.eval.runner \
+          --profile default \
+          --output /workspace/lobstergym/reports/eval-default.json
+        echo ''
+        echo 'Report: lobstergym/reports/eval-default.json'
+
+volumes:
+  openclaw-clawgraph-home:
+  openclaw-default-home:
