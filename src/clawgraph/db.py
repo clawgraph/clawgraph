@@ -122,7 +122,8 @@ class GraphDB:
         self.create_node_table(
             "Entity",
             {"name": "STRING", "label": "STRING",
-             "created_at": "STRING", "updated_at": "STRING"},
+             "created_at": "STRING", "updated_at": "STRING",
+             "access_count": "INT64 DEFAULT 0", "last_accessed": "STRING DEFAULT ''"},
         )
         self.create_rel_table(
             "Relates", "Entity", "Entity",
@@ -241,16 +242,18 @@ class GraphDB:
         return cls(db_path=str(db_path))
 
     def _migrate_timestamps(self) -> None:
-        """Add timestamp columns to existing tables that lack them.
+        """Add timestamp and access-tracking columns to existing tables.
 
         This is a no-op for new databases. For databases created before
-        timestamps were added, it attempts to ALTER TABLE to add the
-        columns. Failures are silently ignored (column may already exist).
+        these columns were added, it attempts to ALTER TABLE to add them.
+        Failures are silently ignored (column may already exist).
         """
         migrations = [
             "ALTER TABLE Entity ADD created_at STRING DEFAULT ''",
             "ALTER TABLE Entity ADD updated_at STRING DEFAULT ''",
             "ALTER TABLE Relates ADD created_at STRING DEFAULT ''",
+            "ALTER TABLE Entity ADD access_count INT64 DEFAULT 0",
+            "ALTER TABLE Entity ADD last_accessed STRING DEFAULT ''",
         ]
         for stmt in migrations:
             try:
