@@ -34,6 +34,8 @@ Usage::
 
 from __future__ import annotations
 
+import logging
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -47,6 +49,8 @@ from clawgraph.llm import (
     infer_ontology_batch,
 )
 from clawgraph.ontology import Ontology
+
+logger = logging.getLogger(__name__)
 
 
 class Memory:
@@ -177,7 +181,124 @@ class Memory:
         if not validation:
             raise LLMError(f"Generated invalid Cypher: {validation.errors}")
 
-        return self._db.execute(cypher)
+        results = self._db.execute(cypher)
+
+        # Increment access counts for returned entities
+        self._increment_access_counts(results)
+
+        return results
+
+    def prune(
+        self,
+        max_age_days: int | None = None,
+        min_access_count: int | None = None,
+    ) -> list[str]:
+        """Remove stale or rarely-accessed entities.
+
+        Args:
+            max_age_days: Remove entities not accessed for this many days.
+                          Uses last_accessed timestamp (falls back to
+                          created_at if never accessed).
+            min_access_count: Remove entities with access_count below
+                              this threshold.
+
+        Returns:
+            List of entity names that were removed.
+        """
+        if max_age_days is None and min_access_count is None:
+            return []
+
+        if not self._db.has_node_table("Entity"):
+            return []
+
+        removed: list[str] = []
+
+        if max_age_days is not None:
+            removed.extend(self._prune_by_age(max_age_days))
+
+        if min_access_count is not None:
+            removed.extend(self._prune_by_access_count(min_access_count))
+
+        # Deduplicate while preserving order
+        seen: set[str] = set()
+        unique: list[str] = []
+        for name in removed:
+            if name not in seen:
+                seen.add(name)
+                unique.append(name)
+
+        for name in unique:
+            logger.info("Pruned entity: %s", name)
+
+        return unique
+
+    def _prune_by_age(self, max_age_days: int) -> list[str]:
+        """Remove entities not accessed within max_age_days."""
+        rows = self._db.execute(
+            "MATCH (e:Entity) RETURN e.name, e.last_accessed, e.created_at"
+        )
+        to_remove: list[str] = []
+        now = datetime.now(timezone.utc)
+        for row in rows:
+            last = row.get("e.last_accessed") or row.get("e.created_at") or ""
+            if not last:
+                to_remove.append(row["e.name"])
+                continue
+            try:
+                ts = datetime.fromisoformat(last)
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+                age = (now - ts).days
+                if age >= max_age_days:
+                    to_remove.append(row["e.name"])
+            except (ValueError, TypeError):
+                to_remove.append(row["e.name"])
+
+        for name in to_remove:
+            self._db.execute(
+                "MATCH (e:Entity {name: $name}) DETACH DELETE e",
+                {"name": name},
+            )
+        return to_remove
+
+    def _prune_by_access_count(self, min_access_count: int) -> list[str]:
+        """Remove entities with access_count below the threshold."""
+        rows = self._db.execute(
+            "MATCH (e:Entity) WHERE COALESCE(e.access_count, 0) < $min "
+            "RETURN e.name",
+            {"min": min_access_count},
+        )
+        names = [row["e.name"] for row in rows]
+        for name in names:
+            self._db.execute(
+                "MATCH (e:Entity {name: $name}) DETACH DELETE e",
+                {"name": name},
+            )
+        return names
+
+    def _increment_access_counts(self, results: list[dict[str, Any]]) -> None:
+        """Increment access_count and update last_accessed for entities in results."""
+        if not self._db.has_node_table("Entity"):
+            return
+
+        entity_names: set[str] = set()
+        for row in results:
+            for key, value in row.items():
+                if key.startswith("e.name") or key.endswith(".name"):
+                    if isinstance(value, str):
+                        entity_names.add(value)
+
+        now = GraphDB.now_iso()
+        for name in entity_names:
+            try:
+                self._db.execute(
+                    "MATCH (e:Entity {name: $name}) "
+                    "SET e.access_count = COALESCE(e.access_count, 0) + 1, "
+                    "e.last_accessed = $now",
+                    {"name": name, "now": now},
+                )
+            except Exception:
+                pass  # Entity may not exist or column missing
 
     def entities(self) -> list[dict[str, Any]]:
         """Get all entities in the graph."""
