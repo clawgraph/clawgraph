@@ -1,0 +1,47 @@
+version: "3.8"
+
+services:
+  # ClawGraph test environment with Python + OpenClaw
+  test-bed:
+    build:
+      context: ..
+      dockerfile: .devcontainer/Dockerfile
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - LITELLM_LOCAL_MODEL_COST_MAP=True
+    volumes:
+      - ..:/workspace:cached
+      - clawgraph-data:/root/.clawgraph
+    working_dir: /workspace
+    command: >
+      bash -c "
+        echo '=== ClawGraph Test Bed ===' &&
+        python -m pytest tests/ -v &&
+        echo '=== All tests passed ==='
+      "
+
+  # Integration test: run ClawGraph CLI commands
+  integration-test:
+    build:
+      context: ..
+      dockerfile: .devcontainer/Dockerfile
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - LITELLM_LOCAL_MODEL_COST_MAP=True
+    volumes:
+      - ..:/workspace:cached
+    working_dir: /workspace
+    command: >
+      bash -c "
+        echo '=== Integration Tests ===' &&
+        clawgraph add 'Alice is an engineer at Acme Corp' &&
+        clawgraph add 'Bob manages the design team at Acme' &&
+        clawgraph query 'Who works at Acme?' --output json &&
+        clawgraph export --output json &&
+        clawgraph ontology show &&
+        echo '=== Integration tests complete ==='
+      "
+
+volumes:
+  clawgraph-data:

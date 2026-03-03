@@ -1,5 +1,6 @@
 """Tests for the Memory Python API."""
 
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from clawgraph.memory import AddResult, Memory
@@ -194,3 +195,82 @@ class TestMemoryConstraints:
         messages = call_args.kwargs.get("messages") or call_args[1].get("messages")
         system_msg = messages[0]["content"]
         assert "Person" in system_msg
+
+
+class TestMemoryConfigInjection:
+    """Tests for Memory config dict parameter."""
+
+    def test_config_sets_model(self) -> None:
+        mem = Memory(
+            db_path=":memory:",
+            config={"llm": {"model": "gpt-4o"}},
+        )
+        assert mem._model == "gpt-4o"
+
+    def test_explicit_model_overrides_config(self) -> None:
+        mem = Memory(
+            db_path=":memory:",
+            model="claude-3-opus-20240229",
+            config={"llm": {"model": "gpt-4o"}},
+        )
+        assert mem._model == "claude-3-opus-20240229"
+
+    def test_config_empty_dict(self) -> None:
+        mem = Memory(db_path=":memory:", config={})
+        assert mem._model is None
+
+
+class TestMemoryInitFacts:
+    """Tests for Memory init_facts parameter."""
+
+    @patch("clawgraph.llm.litellm")
+    def test_init_facts_seeds_on_creation(self, mock_litellm: MagicMock) -> None:
+        json_resp = '{"entities": [{"name": "Alice", "label": "Person"}], "relationships": []}'
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock(message=MagicMock(content=json_resp))]
+        mock_litellm.completion.return_value = mock_response
+
+        mem = Memory(
+            db_path=":memory:",
+            init_facts=["Alice is a person"],
+        )
+        entities = mem.entities()
+        assert len(entities) == 1
+        assert entities[0]["e.name"] == "Alice"
+
+    def test_init_facts_none(self) -> None:
+        mem = Memory(db_path=":memory:", init_facts=None)
+        assert mem.entities() == []
+
+    def test_init_facts_empty_list(self) -> None:
+        mem = Memory(db_path=":memory:", init_facts=[])
+        assert mem.entities() == []
+
+
+class TestMemorySnapshot:
+    """Tests for Memory snapshot save/restore."""
+
+    @patch("clawgraph.llm.litellm")
+    def test_save_and_restore_snapshot(self, mock_litellm: MagicMock, tmp_path: Path) -> None:
+        json_resp = '{"entities": [{"name": "Alice", "label": "Person"}, {"name": "Bob", "label": "Person"}], "relationships": [{"from": "Alice", "to": "Bob", "type": "KNOWS"}]}'
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock(message=MagicMock(content=json_resp))]
+        mock_litellm.completion.return_value = mock_response
+
+        # Create and populate
+        db_dir = tmp_path / "original"
+        mem = Memory(db_path=str(db_dir))
+        mem.add("Alice knows Bob")
+
+        # Snapshot
+        archive = mem.save_snapshot(tmp_path / "backup.tar.gz")
+        assert archive.exists()
+        mem.close()
+
+        # Restore to a separate directory (avoids lock conflicts)
+        restored = Memory.from_snapshot(archive, tmp_path / "restored")
+        entities = restored.entities()
+        rels = restored.relationships()
+        assert len(entities) == 2
+        assert len(rels) == 1
+        restored.close()

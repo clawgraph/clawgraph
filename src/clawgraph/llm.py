@@ -235,13 +235,17 @@ def build_merge_cypher(entities: list[dict[str, str]], relationships: list[dict[
     Returns:
         Multi-line Cypher string with MERGE statements.
     """
+    from clawgraph.db import GraphDB
+
+    now = GraphDB.now_iso()
     lines: list[str] = []
 
     for entity in entities:
         name = entity["name"].replace("'", "\\'")
         label = entity.get("label", "Unknown").replace("'", "\\'")
         lines.append(
-            f"MERGE (e:Entity {{name: '{name}'}}) SET e.label = '{label}';"
+            f"MERGE (e:Entity {{name: '{name}'}}) "
+            f"SET e.label = '{label}', e.updated_at = '{now}';"
         )
 
     for rel in relationships:
