@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Contact Us — LobsterGym{% endblock %}
+{% block content %}
+<h1>📬 Contact Us</h1>
+<p class="text-muted mb-2">Step 1 of 2: Your Details</p>
+
+<div class="card">
+  <form action="/contact/step2" method="POST">
+    <label for="name">Your Name</label>
+    <input type="text" id="name" name="name" placeholder="Molty Lobster" required>
+    <label for="email">Your Email</label>
+    <input type="email" id="email" name="email" placeholder="molty@example.com" required>
+    <button type="submit" class="btn btn-primary">Next →</button>
+  </form>
+</div>
+{% endblock %}

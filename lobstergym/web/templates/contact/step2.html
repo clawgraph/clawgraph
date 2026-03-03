@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Contact Us — Message — LobsterGym{% endblock %}
+{% block content %}
+<h1>📬 Contact Us</h1>
+<p class="text-muted mb-2">Step 2 of 2: Your Message</p>
+
+<div class="card">
+  <p><strong>Name:</strong> {{ name }} | <strong>Email:</strong> {{ email }}</p>
+</div>
+
+<div class="card mt-2">
+  <form action="/contact/submit" method="POST">
+    <input type="hidden" name="name" value="{{ name }}">
+    <input type="hidden" name="email" value="{{ email }}">
+    <label for="subject">Subject</label>
+    <input type="text" id="subject" name="subject" placeholder="Feedback" required>
+    <label for="message">Message</label>
+    <textarea id="message" name="message" rows="5" placeholder="Tell us something..." required></textarea>
+    <button type="submit" class="btn btn-success">Submit</button>
+  </form>
+</div>
+{% endblock %}

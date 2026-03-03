@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}{{ product.name }} — LobsterGym Shop{% endblock %}
+{% block content %}
+<h1>{{ product.name }}</h1>
+<div class="card">
+  <p>Product ID: <span class="badge badge-info">{{ product.id }}</span></p>
+  <p class="text-success" style="font-size:1.5rem; font-weight:700;">${{ "%.2f"|format(product.price) }}</p>
+  <p>{{ product.stock }} in stock</p>
+
+  <form action="/shop/cart/add" method="POST" class="mt-2">
+    <input type="hidden" name="product_id" value="{{ product.id }}">
+    <div class="form-row" style="max-width:300px;">
+      <div>
+        <label for="quantity">Quantity</label>
+        <input type="number" id="quantity" name="quantity" value="1" min="1" max="{{ product.stock }}">
+      </div>
+    </div>
+    <button type="submit" class="btn btn-success">Add to Cart</button>
+  </form>
+</div>
+<a href="/shop" class="btn btn-secondary mt-2">← Back to Shop</a>
+{% endblock %}

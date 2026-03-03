@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Thank You — LobsterGym{% endblock %}
+{% block content %}
+<h1>🎉 Message Sent!</h1>
+<div class="card">
+  <p><strong>Thank you, {{ submission.name }}!</strong></p>
+  <p>We received your message about <em>"{{ submission.subject }}"</em>.</p>
+  <p class="text-muted">Ref: {{ submission.id }}</p>
+</div>
+<a href="/contact" class="btn btn-secondary mt-2">← Send Another</a>
+{% endblock %}

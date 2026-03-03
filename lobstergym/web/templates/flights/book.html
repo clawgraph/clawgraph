@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Book {{ flight.id }} — LobsterGym{% endblock %}
+{% block content %}
+<h1>📝 Book Flight {{ flight.id }}</h1>
+<div class="card">
+  <p><strong>{{ flight.airline }}</strong> — {{ flight.from }} → {{ flight.to }}</p>
+  <p>Depart: {{ flight.depart }} | Arrive: {{ flight.arrive }}</p>
+  <p>Price: <strong>${{ flight.price }}</strong></p>
+</div>
+
+<div class="card mt-2">
+  <h3>Passenger Details</h3>
+  <form action="/flights/confirm" method="POST">
+    <input type="hidden" name="flight_id" value="{{ flight.id }}">
+    <label for="name">Full Name</label>
+    <input type="text" id="name" name="name" placeholder="Molty Lobster" required>
+    <label for="email">Email</label>
+    <input type="email" id="email" name="email" placeholder="molty@openclaw.ai" required>
+    <button type="submit" class="btn btn-success">Confirm Booking</button>
+  </form>
+</div>
+{% endblock %}

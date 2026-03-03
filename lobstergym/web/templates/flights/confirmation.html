@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Booking Confirmed — LobsterGym{% endblock %}
+{% block content %}
+<h1>🎉 Booking Confirmed!</h1>
+<div class="card">
+  <p><strong>Confirmation Code:</strong> <span class="badge badge-success">{{ booking.confirmation }}</span></p>
+  <p><strong>Flight:</strong> {{ booking.flight_id }}</p>
+  <p><strong>Passenger:</strong> {{ booking.passenger_name }}</p>
+  <p><strong>Email:</strong> {{ booking.passenger_email }}</p>
+</div>
+<a href="/flights" class="btn btn-secondary mt-2">← Search More Flights</a>
+{% endblock %}

@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}LobsterGym — Agent Evaluation Playground{% endblock %}
+{% block content %}
+<h1>🦞 LobsterGym</h1>
+<p class="text-muted mb-2">Mock websites for evaluating AI agent browser-automation capabilities.</p>
+
+<div class="grid grid-2">
+  <div class="card">
+    <h3><span class="emoji">✈️</span> Flight Booking</h3>
+    <p>Search flights, select one, fill in passenger details, and confirm the booking.</p>
+    <a href="/flights" class="btn btn-primary mt-1">Go to Flights</a>
+  </div>
+  <div class="card">
+    <h3><span class="emoji">✅</span> Todo App</h3>
+    <p>Add, toggle, and delete todo items. Classic CRUD interface.</p>
+    <a href="/todos" class="btn btn-primary mt-1">Go to Todos</a>
+  </div>
+  <div class="card">
+    <h3><span class="emoji">📬</span> Contact Form</h3>
+    <p>Multi-step contact form: enter name/email, then subject/message.</p>
+    <a href="/contact" class="btn btn-primary mt-1">Go to Contact</a>
+  </div>
+  <div class="card">
+    <h3><span class="emoji">🛒</span> E-Commerce Shop</h3>
+    <p>Browse products, add to cart, and checkout with shipping details.</p>
+    <a href="/shop" class="btn btn-primary mt-1">Go to Shop</a>
+  </div>
+</div>
+
+<div class="card mt-3">
+  <h3>Evaluation Endpoints</h3>
+  <table>
+    <tr><th>Scenario</th><th>State Endpoint</th><th>Description</th></tr>
+    <tr><td>Flights</td><td><code>/flights/state</code></td><td>Searches & bookings</td></tr>
+    <tr><td>Todos</td><td><code>/todos/state</code></td><td>Current items list</td></tr>
+    <tr><td>Contact</td><td><code>/contact/state</code></td><td>Form submissions</td></tr>
+    <tr><td>Shop</td><td><code>/shop/state</code></td><td>Cart & orders</td></tr>
+    <tr><td colspan="2"><code>POST /reset</code></td><td>Reset all scenarios</td></tr>
+    <tr><td colspan="2"><code>/health</code></td><td>Health check</td></tr>
+  </table>
+</div>
+{% endblock %}
