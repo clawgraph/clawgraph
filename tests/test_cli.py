@@ -26,7 +26,7 @@ class TestVersionCommand:
 class TestStatsCommand:
     """Tests for the stats subcommand using real in-memory DB."""
 
-    def test_stats_human(self, tmp_path: str) -> None:
+    def test_stats_human(self) -> None:
         from clawgraph.db import GraphDB
 
         db = GraphDB(db_path=":memory:")
