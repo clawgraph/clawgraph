@@ -1,7 +1,7 @@
 FROM mcr.microsoft.com/devcontainers/python:3.11
 
-# Install Node.js 20 for OpenClaw
-RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+# Install Node.js 22 (OpenClaw requires >=22)
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y nodejs \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
@@ -10,11 +10,11 @@ WORKDIR /workspace
 COPY . /workspace/
 RUN pip install --no-cache-dir -e ".[dev]"
 
-# Install OpenClaw globally
-RUN npm install -g @anthropic-ai/openclaw 2>/dev/null || true
+# Install OpenClaw globally (npm package is "openclaw")
+RUN npm install -g openclaw@latest
 
-# Create ClawGraph config directory
-RUN mkdir -p /root/.clawgraph
+# Create ClawGraph + OpenClaw config directories
+RUN mkdir -p /root/.clawgraph /root/.openclaw/workspace/skills
 
 # Default command
 CMD ["bash"]

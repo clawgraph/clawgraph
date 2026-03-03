@@ -8,11 +8,11 @@
             "version": "3.11"
         },
         "ghcr.io/devcontainers/features/node:1": {
-            "version": "20"
+            "version": "22"
         }
     },
-    "forwardPorts": [3000],
-    "postCreateCommand": "pip install -e '.[dev]' && npm install -g @anthropic-ai/openclaw",
+    "forwardPorts": [18789],
+    "postCreateCommand": "pip install -e '.[dev]' && npm install -g openclaw@latest",
     "remoteEnv": {
         "OPENAI_API_KEY": "${localEnv:OPENAI_API_KEY}",
         "ANTHROPIC_API_KEY": "${localEnv:ANTHROPIC_API_KEY}"
