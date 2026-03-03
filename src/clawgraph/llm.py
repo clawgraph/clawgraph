@@ -222,7 +222,11 @@ def infer_ontology_batch(
         raise LLMError(f"Failed to parse batch ontology response: {e}\nRaw: {cleaned}") from e
 
 
-def build_merge_cypher(entities: list[dict[str, str]], relationships: list[dict[str, str]]) -> str:
+def build_merge_cypher(
+    entities: list[dict[str, str]],
+    relationships: list[dict[str, str]],
+    source: dict[str, str] | None = None,
+) -> str:
     """Build MERGE Cypher statements from extracted entities and relationships.
 
     This generates Kùzu-compatible MERGE queries using the generic
@@ -231,6 +235,8 @@ def build_merge_cypher(entities: list[dict[str, str]], relationships: list[dict[
     Args:
         entities: List of dicts with 'name' and 'label'.
         relationships: List of dicts with 'from', 'to', and 'type'.
+        source: Optional provenance metadata dict with keys
+                'agent', 'session', 'input'.
 
     Returns:
         Multi-line Cypher string with MERGE statements.
@@ -248,13 +254,25 @@ def build_merge_cypher(entities: list[dict[str, str]], relationships: list[dict[
             f"SET e.label = '{label}', e.updated_at = '{now}';"
         )
 
+    # Build provenance SET clause for relationships
+    prov_set = ""
+    if source:
+        parts: list[str] = []
+        for key, prop in [("agent", "source_agent"), ("session", "source_session"), ("input", "source_input")]:
+            if key in source:
+                val = source[key].replace("'", "\\'")
+                parts.append(f"r.{prop} = '{val}'")
+        if parts:
+            prov_set = ", " + ", ".join(parts)
+
     for rel in relationships:
         from_name = rel["from"].replace("'", "\\'")
         to_name = rel["to"].replace("'", "\\'")
         rel_type = rel.get("type", "RELATED_TO").replace("'", "\\'")
         lines.append(
             f"MATCH (a:Entity {{name: '{from_name}'}}), (b:Entity {{name: '{to_name}'}}) "
-            f"MERGE (a)-[r:Relates {{type: '{rel_type}'}}]->(b);"
+            f"MERGE (a)-[r:Relates {{type: '{rel_type}'}}]->(b)"
+            f" SET r.type = '{rel_type}'{prov_set};"
         )
 
     return "\n".join(lines)
