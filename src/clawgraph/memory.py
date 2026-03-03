@@ -238,7 +238,7 @@ class Memory:
             "MATCH (e:Entity) RETURN e.name, e.last_accessed, e.created_at"
         )
         to_remove: list[str] = []
-        cutoff_dt = datetime.now(timezone.utc)
+        now = datetime.now(timezone.utc)
         for row in rows:
             last = row.get("e.last_accessed") or row.get("e.created_at") or ""
             if not last:
@@ -246,7 +246,9 @@ class Memory:
                 continue
             try:
                 ts = datetime.fromisoformat(last)
-                age = (cutoff_dt - ts).days
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+                age = (now - ts).days
                 if age >= max_age_days:
                     to_remove.append(row["e.name"])
             except (ValueError, TypeError):
