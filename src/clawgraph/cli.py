@@ -23,6 +23,31 @@ app = typer.Typer(
 console = Console(stderr=True)
 out_console = Console()
 
+_AUTH_KEYWORDS = ["auth", "api key", "api_key", "apikey", "unauthorized", "401"]
+
+
+def _is_auth_error(error: Exception) -> bool:
+    """Check if an error is related to missing or invalid API keys."""
+    msg = str(error).lower()
+    return any(kw in msg for kw in _AUTH_KEYWORDS)
+
+
+def _print_auth_help() -> None:
+    """Print helpful guidance for fixing API key issues."""
+    console.print(
+        "[bold red]Authentication Error:[/bold red] "
+        "Missing or invalid API key.\n"
+    )
+    console.print("To fix this, set your API key using one of these methods:\n")
+    console.print("  1. Create a [bold].env[/bold] file in your project directory:")
+    console.print("     [dim]OPENAI_API_KEY=sk-proj-...[/dim]\n")
+    console.print("  2. Export as an environment variable:")
+    console.print("     [dim]export OPENAI_API_KEY=sk-proj-...[/dim]\n")
+    console.print(
+        "For other providers (Anthropic, Azure, etc.), "
+        "see: [link]https://docs.litellm.ai/docs/providers[/link]"
+    )
+
 
 class OutputFormat(str, Enum):
     """Output format options."""
@@ -89,7 +114,10 @@ def add(
             model=model,
         )
     except LLMError as e:
-        console.print(f"[bold red]LLM Error:[/bold red] {e}")
+        if _is_auth_error(e):
+            _print_auth_help()
+        else:
+            console.print(f"[bold red]LLM Error:[/bold red] {e}")
         raise typer.Exit(1)
 
     entities = inferred.get("entities", [])
@@ -184,7 +212,10 @@ def add_batch(
         mem = Memory(model=model)
         result = mem.add_batch(statements)
     except Exception as e:
-        console.print(f"[bold red]Error:[/bold red] {e}")
+        if _is_auth_error(e):
+            _print_auth_help()
+        else:
+            console.print(f"[bold red]Error:[/bold red] {e}")
         raise typer.Exit(1)
 
     if output == OutputFormat.human:
@@ -230,7 +261,10 @@ def query(
             mode="read",
         )
     except LLMError as e:
-        console.print(f"[bold red]LLM Error:[/bold red] {e}")
+        if _is_auth_error(e):
+            _print_auth_help()
+        else:
+            console.print(f"[bold red]LLM Error:[/bold red] {e}")
         raise typer.Exit(1)
 
     cypher = sanitize_cypher(raw_cypher)
@@ -347,6 +381,129 @@ def config(
     else:
         cfg = load_config()
         out_console.print_json(json.dumps(cfg, indent=2))
+
+
+@app.command()
+def version() -> None:
+    """Print the package version."""
+    out_console.print(f"clawgraph {__version__}")
+
+
+@app.command()
+def stats(
+    output: OutputFormat = typer.Option(
+        OutputFormat.human, "--output", "-o", help="Output format."
+    ),
+) -> None:
+    """Show entity count, relationship count, and ontology summary."""
+    from clawgraph.db import GraphDB
+    from clawgraph.ontology import Ontology
+
+    db = GraphDB()
+    db.ensure_base_schema()
+
+    entities = db.get_all_entities()
+    relationships = db.get_all_relationships()
+    ont = Ontology()
+    ontology_summary = ont.to_context_string()
+
+    data = {
+        "entities": len(entities),
+        "relationships": len(relationships),
+        "ontology": ontology_summary,
+    }
+
+    if output == OutputFormat.json:
+        _output(data, output)
+        return
+
+    table = Table(title="Graph Stats")
+    table.add_column("Metric", style="cyan")
+    table.add_column("Value", style="green")
+    table.add_row("Entities", str(len(entities)))
+    table.add_row("Relationships", str(len(relationships)))
+    table.add_row("Ontology", ontology_summary)
+    out_console.print(table)
+
+
+@app.command()
+def delete(
+    name: str = typer.Argument(..., help="Name of the entity to delete."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt."),
+    output: OutputFormat = typer.Option(
+        OutputFormat.human, "--output", "-o", help="Output format."
+    ),
+) -> None:
+    """Remove an entity and its relationships by name."""
+    from clawgraph.db import DatabaseError, GraphDB
+
+    if not yes:
+        confirmed = typer.confirm(f"Delete entity '{name}' and its relationships?")
+        if not confirmed:
+            console.print("[yellow]Aborted.[/yellow]")
+            raise typer.Exit()
+
+    db = GraphDB()
+    db.ensure_base_schema()
+
+    # Delete relationships first, then the entity
+    try:
+        db.execute(
+            "MATCH (a:Entity {name: $name})-[r:Relates]->() DELETE r",
+            {"name": name},
+        )
+        db.execute(
+            "MATCH ()-[r:Relates]->(b:Entity {name: $name}) DELETE r",
+            {"name": name},
+        )
+        db.execute(
+            "MATCH (e:Entity {name: $name}) DELETE e",
+            {"name": name},
+        )
+    except DatabaseError as e:
+        console.print(f"[bold red]Error:[/bold red] {e}")
+        raise typer.Exit(1)
+
+    result = {"status": "ok", "deleted": name}
+
+    if output == OutputFormat.human:
+        console.print(f"[green]Deleted entity '{name}' and its relationships.[/green]")
+    else:
+        _output(result, output)
+
+
+@app.command()
+def clear(
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt."),
+    output: OutputFormat = typer.Option(
+        OutputFormat.human, "--output", "-o", help="Output format."
+    ),
+) -> None:
+    """Wipe all data from the graph database."""
+    from clawgraph.db import DatabaseError, GraphDB
+
+    if not yes:
+        confirmed = typer.confirm("Delete ALL entities and relationships?")
+        if not confirmed:
+            console.print("[yellow]Aborted.[/yellow]")
+            raise typer.Exit()
+
+    db = GraphDB()
+    db.ensure_base_schema()
+
+    try:
+        db.execute("MATCH ()-[r:Relates]->() DELETE r")
+        db.execute("MATCH (e:Entity) DELETE e")
+    except DatabaseError as e:
+        console.print(f"[bold red]Error:[/bold red] {e}")
+        raise typer.Exit(1)
+
+    result = {"status": "ok"}
+
+    if output == OutputFormat.human:
+        console.print("[green]All data cleared.[/green]")
+    else:
+        _output(result, output)
 
 
 if __name__ == "__main__":
