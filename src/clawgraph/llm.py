@@ -256,7 +256,7 @@ def build_merge_cypher(entities: list[dict[str, str]], relationships: list[dict[
         from_name = rel["from"].replace("'", "\\'")
         to_name = rel["to"].replace("'", "\\'")
         rel_type = rel.get("type", "RELATED_TO").replace("'", "\\'")
-        confidence = float(rel.get("confidence", 1.0))
+        confidence = min(1.0, max(0.0, float(rel.get("confidence", 1.0))))
         lines.append(
             f"MATCH (a:Entity {{name: '{from_name}'}}), (b:Entity {{name: '{to_name}'}}) "
             f"MERGE (a)-[r:Relates {{type: '{rel_type}'}}]->(b) "
