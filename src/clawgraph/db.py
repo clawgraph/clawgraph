@@ -49,7 +49,9 @@ class GraphDB:
             List of result rows as dictionaries.
         """
         try:
-            result = self._conn.execute(cypher, parameters or {})
+            raw_result = self._conn.execute(cypher, parameters or {})
+            # kuzu.Connection.execute() returns QueryResult | list[QueryResult]
+            result = raw_result if not isinstance(raw_result, list) else raw_result[0]
             rows: list[dict[str, Any]] = []
             while result.has_next():
                 row = result.get_next()

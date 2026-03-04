@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
-from typing import Any
+from typing import Any, cast
 
 from clawgraph.config import load_config
 
@@ -73,7 +73,7 @@ def generate_cypher(
     except Exception as e:
         raise LLMError(f"LLM call failed: {e}") from e
 
-    content = response.choices[0].message.content
+    content: str | None = response.choices[0].message.content
     if not content:
         raise LLMError("LLM returned empty response")
 
@@ -134,7 +134,7 @@ def infer_ontology(
     except Exception as e:
         raise LLMError(f"LLM call failed: {e}") from e
 
-    content = response.choices[0].message.content
+    content: str | None = response.choices[0].message.content
     if not content:
         raise LLMError("LLM returned empty response for ontology inference")
 
@@ -144,7 +144,7 @@ def infer_ontology(
     cleaned = re.sub(r"\s*```$", "", cleaned)
 
     try:
-        return json.loads(cleaned)
+        return cast(dict[str, Any], json.loads(cleaned))
     except json.JSONDecodeError as e:
         raise LLMError(f"Failed to parse ontology response: {e}\nRaw: {cleaned}") from e
 
@@ -208,7 +208,7 @@ def infer_ontology_batch(
     except Exception as e:
         raise LLMError(f"LLM call failed: {e}") from e
 
-    content = response.choices[0].message.content
+    content: str | None = response.choices[0].message.content
     if not content:
         raise LLMError("LLM returned empty response for batch ontology inference")
 
@@ -217,7 +217,7 @@ def infer_ontology_batch(
     cleaned = re.sub(r"\s*```$", "", cleaned)
 
     try:
-        return json.loads(cleaned)
+        return cast(dict[str, Any], json.loads(cleaned))
     except json.JSONDecodeError as e:
         raise LLMError(f"Failed to parse batch ontology response: {e}\nRaw: {cleaned}") from e
 

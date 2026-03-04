@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 
 class Ontology:
@@ -52,7 +52,7 @@ class Ontology:
         """Load ontology from disk."""
         if self._ontology_path.exists():
             with open(self._ontology_path) as f:
-                return json.load(f)
+                return cast(dict[str, Any], json.load(f))
         return {"nodes": {}, "relationships": {}}
 
     def _save(self) -> None:
@@ -64,12 +64,12 @@ class Ontology:
     @property
     def nodes(self) -> dict[str, dict[str, str]]:
         """Get all node labels and their properties."""
-        return self._schema.get("nodes", {})
+        return cast(dict[str, dict[str, str]], self._schema.get("nodes", {}))
 
     @property
     def relationships(self) -> dict[str, dict[str, Any]]:
         """Get all relationship types and their properties."""
-        return self._schema.get("relationships", {})
+        return cast(dict[str, dict[str, Any]], self._schema.get("relationships", {}))
 
     def add_node_label(self, label: str, properties: dict[str, str] | None = None) -> None:
         """Register a node label with optional properties.
