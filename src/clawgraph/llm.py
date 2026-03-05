@@ -310,5 +310,51 @@ def _build_read_prompt(ontology_context: str) -> str:
     return prompt
 
 
+def _call_integration_model(
+    messages: list[dict[str, str]],
+    model: str | None = None,
+    temperature: float | None = None,
+) -> str:
+    """Call the Tier 2 integration model via LiteLLM.
+
+    Uses ``llm.integration_model`` from config unless *model* is provided
+    explicitly.  Follows the same pattern as other LLM call helpers in this
+    module.
+
+    Args:
+        messages: Chat messages list (role/content dicts).
+        model: Integration model override. Defaults to config value.
+        temperature: Sampling temperature override. Defaults to config value.
+
+    Returns:
+        The model's text response, stripped of leading/trailing whitespace.
+
+    Raises:
+        LLMError: If ``integration_model`` is not configured, the LLM call
+                  fails, or the model returns an empty response.
+    """
+    config = load_config()
+    resolved_model = model or config.get("llm", {}).get("integration_model")
+    if not resolved_model:
+        raise LLMError("integration_model is not configured")
+    config_temp = config.get("llm", {}).get("temperature", 0.0)
+    resolved_temp = temperature if temperature is not None else config_temp
+
+    try:
+        response = litellm.completion(
+            model=resolved_model,
+            messages=messages,
+            temperature=resolved_temp,
+        )
+    except Exception as e:
+        raise LLMError(f"Integration model call failed: {e}") from e
+
+    content: str | None = response.choices[0].message.content
+    if not content:
+        raise LLMError("Integration model returned empty response")
+
+    return content.strip()
+
+
 class LLMError(Exception):
     """Raised when an LLM operation fails."""

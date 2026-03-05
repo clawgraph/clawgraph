@@ -34,6 +34,7 @@ Usage::
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -60,6 +61,7 @@ class Memory:
         self,
         db_path: str | None = None,
         model: str | None = None,
+        integration_model: str | None = None,
         ontology_dir: str | None = None,
         allowed_labels: list[str] | None = None,
         allowed_relationship_types: list[str] | None = None,
@@ -72,7 +74,13 @@ class Memory:
         Args:
             db_path: Path to Kùzu database. Defaults to ~/.clawgraph/data.
                      Use ':memory:' for ephemeral storage.
-            model: LLM model override. Defaults to config value.
+            model: LLM model override (Tier 1 — fast/cheap). Defaults to
+                   config value.
+            integration_model: Frontier model override (Tier 2 — used for
+                                memory integration, contradiction resolution,
+                                and ontology reasoning). Defaults to config
+                                value. Pass ``None`` to disable integration
+                                features.
             ontology_dir: Path to ontology storage dir.
             allowed_labels: Constrain entity extraction to these labels.
             allowed_relationship_types: Constrain relationship extraction
@@ -84,7 +92,8 @@ class Memory:
                         Uses MERGE so repeated init is idempotent.
             config: Dict to override config-file values. Supports
                     keys like ``{"llm": {"model": "..."}, "db": {"path": "..."}}``.
-                    Explicit ``db_path`` / ``model`` params take priority.
+                    Explicit ``db_path`` / ``model`` / ``integration_model``
+                    params take priority.
         """
         # Apply config dict if provided
         if config:
@@ -92,6 +101,8 @@ class Memory:
                 db_path = config.get("db", {}).get("path")
             if model is None:
                 model = config.get("llm", {}).get("model")
+            if integration_model is None:
+                integration_model = config.get("llm", {}).get("integration_model")
 
         self._db = GraphDB(db_path=db_path)
         self._db.ensure_base_schema()
@@ -104,6 +115,7 @@ class Memory:
                 allowed_relationship_types=allowed_relationship_types,
             )
         self._model = model
+        self._integration_model = integration_model
 
         # Seed initial facts (idempotent via MERGE)
         if init_facts:
@@ -236,6 +248,23 @@ class Memory:
         db_path = restored_db.db_path
         restored_db.close()
         return cls(db_path=db_path, **kwargs)
+
+    def integrate(self) -> None:
+        """Run Tier 2 integration tasks (contradiction resolution, ontology reasoning).
+
+        This method is a no-op stub that will be used by future features
+        (F23 Contradiction Detection, F24 Corroboration).  It is always an
+        explicit opt-in — it is never called on the hot path of :meth:`add`.
+
+        If ``integration_model`` is not configured, a warning is logged and
+        the method returns without error (graceful degradation).
+        """
+        if not self._integration_model:
+            logging.warning(
+                "integrate() called but integration_model is not configured — skipping"
+            )
+            return
+        logging.info("integrate() called — no integration tasks pending")
 
     def _execute_inferred(
         self,
