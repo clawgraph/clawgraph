@@ -10,6 +10,7 @@ import yaml
 _DEFAULT_CONFIG: dict[str, Any] = {
     "llm": {
         "model": "gpt-4o-mini",
+        "integration_model": "gpt-4o",
         "temperature": 0.0,
     },
     "db": {
