@@ -158,6 +158,59 @@ class Ontology:
             result["allowed_relationship_types"] = self._allowed_relationship_types
         return result
 
+    def register_workflow_defaults(self) -> None:
+        """Register the built-in workflow node and relationship types.
+
+        Adds Workflow, Step, Tool, and Application node labels plus the
+        HAS_STEP, USED_TOOL, NEXT, and ACCESSED_APP relationship types to
+        the ontology.  Calling this multiple times is safe — existing
+        entries are overwritten with the same values.
+        """
+        self.add_node_label(
+            "Workflow",
+            {
+                "name": "STRING",
+                "started_at": "STRING",
+                "finished_at": "STRING",
+                "total_duration_ms": "INT64",
+                "step_count": "INT64",
+                "status": "STRING",
+            },
+        )
+        self.add_node_label(
+            "Step",
+            {
+                "id": "STRING",
+                "tool_name": "STRING",
+                "input_summary": "STRING",
+                "output_summary": "STRING",
+                "duration_ms": "INT64",
+                "status": "STRING",
+                "order_index": "INT64",
+            },
+        )
+        self.add_node_label("Tool", {"name": "STRING", "description": "STRING"})
+        self.add_node_label("Application", {"name": "STRING", "description": "STRING"})
+
+        self.add_relationship_type("HAS_STEP", "Workflow", "Step")
+        self.add_relationship_type("USED_TOOL", "Step", "Tool")
+        self.add_relationship_type("NEXT", "Step", "Step")
+        self.add_relationship_type("ACCESSED_APP", "Step", "Application")
+
+    def summary(self) -> dict[str, Any]:
+        """Return a concise summary of the registered ontology.
+
+        Returns:
+            Dict with ``node_count``, ``relationship_count``,
+            ``node_labels``, and ``relationship_types`` keys.
+        """
+        return {
+            "node_count": len(self._schema.get("nodes", {})),
+            "relationship_count": len(self._schema.get("relationships", {})),
+            "node_labels": list(self._schema.get("nodes", {}).keys()),
+            "relationship_types": list(self._schema.get("relationships", {}).keys()),
+        }
+
     def clear(self) -> None:
         """Clear the ontology."""
         self._schema = {"nodes": {}, "relationships": {}}
