@@ -65,18 +65,29 @@ services:
         pip install -e /workspace &&
         cat > /root/.openclaw/openclaw.json << 'CONF'
         {
-          "agents": {
-            "defaults": {
-              "model": {
-                "primary": "openai/gpt-4o-mini"
+              "gateway": {
+                "mode": "local",
+                "bind": "lan",
+                "controlUi": {
+                  "enabled": true,
+                  "allowedOrigins": [
+                    "http://localhost:18789",
+                    "http://127.0.0.1:18789"
+                  ]
+                }
+              },
+              "agents": {
+                "defaults": {
+                  "model": {
+                    "primary": "openai/gpt-5-mini"
+                  }
+                }
               }
-            }
-          }
         }
         CONF
         echo '=== Starting OpenClaw gateway on port 18789 ===' &&
         echo 'WebChat/Control UI: http://127.0.0.1:18789/' &&
-        openclaw gateway --port 18789 --verbose
+        openclaw gateway --bind lan --port 18789 --verbose
       "
 
   # Send a message to the running OpenClaw agent and inspect the response

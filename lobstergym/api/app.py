@@ -48,6 +48,12 @@ WEATHER_DATA: dict[str, dict[str, Any]] = {
 weather_queries: list[dict[str, Any]] = []
 
 
+@app.get("/weather/state")
+def weather_state() -> dict[str, Any]:
+    """Eval harness inspection."""
+    return {"queries": weather_queries}
+
+
 @app.get("/weather/{city}")
 def get_weather(city: str) -> dict[str, Any]:
     """Get current weather for a city."""
@@ -56,12 +62,6 @@ def get_weather(city: str) -> dict[str, Any]:
     if key not in WEATHER_DATA:
         raise HTTPException(status_code=404, detail=f"No weather data for '{city}'")
     return {"city": city, **WEATHER_DATA[key]}
-
-
-@app.get("/weather/state")
-def weather_state() -> dict[str, Any]:
-    """Eval harness inspection."""
-    return {"queries": weather_queries}
 
 
 # ===================================================================
@@ -276,6 +276,12 @@ notes: list[dict[str, Any]] = [
 ]
 
 
+@app.get("/notes/state")
+def notes_state() -> dict[str, Any]:
+    """Eval harness inspection."""
+    return {"notes": notes}
+
+
 @app.get("/notes")
 def list_notes(tag: str | None = None) -> dict[str, Any]:
     """List all notes, optionally filtered by tag."""
@@ -328,12 +334,6 @@ def delete_note(note_id: str) -> MessageResponse:
     if len(notes) == before:
         raise HTTPException(status_code=404, detail="Note not found")
     return MessageResponse(message="Note deleted")
-
-
-@app.get("/notes/state")
-def notes_state() -> dict[str, Any]:
-    """Eval harness inspection."""
-    return {"notes": notes}
 
 
 # ===================================================================
