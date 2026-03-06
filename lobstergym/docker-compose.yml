@@ -71,8 +71,12 @@ services:
         pip install -e /workspace 2>/dev/null &&
         cat > /root/.openclaw/openclaw.json << 'CONF'
         {
-          \"agent\": {
-            \"model\": \"openai/gpt-4o-mini\"
+          \"agents\": {
+            \"defaults\": {
+              \"model\": {
+                \"primary\": \"openai/gpt-4o-mini\"
+              }
+            }
           },
           \"browser\": {
             \"enabled\": true,
@@ -99,6 +103,7 @@ services:
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - LITELLM_LOCAL_MODEL_COST_MAP=True
     volumes:
       - ..:/workspace:cached
       - openclaw-default-home:/root/.openclaw
@@ -113,8 +118,12 @@ services:
         echo '=== OpenClaw Default Gateway ===' &&
         cat > /root/.openclaw/openclaw.json << 'CONF'
         {
-          \"agent\": {
-            \"model\": \"openai/gpt-4o-mini\"
+          \"agents\": {
+            \"defaults\": {
+              \"model\": {
+                \"primary\": \"openai/gpt-4o-mini\"
+              }
+            }
           },
           \"browser\": {
             \"enabled\": true,
@@ -136,21 +145,48 @@ services:
     build:
       context: ..
       dockerfile: .devcontainer/Dockerfile
-    network_mode: "service:openclaw-clawgraph"
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - LOBSTERGYM_WEB_BASE=http://lobstergym-web:8080
+      - LOBSTERGYM_API_BASE=http://lobstergym-api:8090
+      - LITELLM_LOCAL_MODEL_COST_MAP=True
     volumes:
       - ..:/workspace:cached
       - openclaw-clawgraph-home:/root/.openclaw
     working_dir: /workspace
     depends_on:
-      - openclaw-clawgraph
+      lobstergym-web:
+        condition: service_healthy
+      lobstergym-api:
+        condition: service_healthy
     entrypoint: ["bash", "-c"]
     command:
       - |
         echo '🦞 LobsterGym Eval — ClawGraph Profile'
+        mkdir -p /root/.openclaw/workspace/skills
+        rm -rf /root/.openclaw/workspace/skills/clawgraph
+        cp -r /workspace/skills/clawgraph /root/.openclaw/workspace/skills/
         pip install -e /workspace 2>/dev/null
         pip install requests 2>/dev/null
+        cat > /root/.openclaw/openclaw.json << 'CONF'
+        {
+          "agents": {
+            "defaults": {
+              "model": {
+                "primary": "openai/gpt-4o-mini"
+              }
+            }
+          },
+          "browser": {
+            "enabled": true,
+            "headless": true,
+            "noSandbox": true,
+            "ssrfPolicy": {
+              "dangerouslyAllowPrivateNetwork": true
+            }
+          }
+        }
+        CONF
         python -m lobstergym.eval.runner \
           --profile clawgraph \
           --output /workspace/lobstergym/reports/eval-clawgraph.json
@@ -164,19 +200,44 @@ services:
     build:
       context: ..
       dockerfile: .devcontainer/Dockerfile
-    network_mode: "service:openclaw-default"
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - LOBSTERGYM_WEB_BASE=http://lobstergym-web:8080
+      - LOBSTERGYM_API_BASE=http://lobstergym-api:8090
+      - LITELLM_LOCAL_MODEL_COST_MAP=True
     volumes:
       - ..:/workspace:cached
       - openclaw-default-home:/root/.openclaw
     working_dir: /workspace
     depends_on:
-      - openclaw-default
+      lobstergym-web:
+        condition: service_healthy
+      lobstergym-api:
+        condition: service_healthy
     entrypoint: ["bash", "-c"]
     command:
       - |
         echo '🦞 LobsterGym Eval — Default Profile'
+        cat > /root/.openclaw/openclaw.json << 'CONF'
+        {
+          "agents": {
+            "defaults": {
+              "model": {
+                "primary": "openai/gpt-4o-mini"
+              }
+            }
+          },
+          "browser": {
+            "enabled": true,
+            "headless": true,
+            "noSandbox": true,
+            "ssrfPolicy": {
+              "dangerouslyAllowPrivateNetwork": true
+            }
+          }
+        }
+        CONF
+        pip install -e /workspace 2>/dev/null
         pip install requests 2>/dev/null
         python -m lobstergym.eval.runner \
           --profile default \

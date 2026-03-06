@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import time
@@ -29,9 +30,8 @@ from .tasks import TASKS, Category, Check, Difficulty, Task, get_tasks
 # Configuration
 # ---------------------------------------------------------------------------
 
-WEB_BASE = "http://lobstergym-web:8080"
-API_BASE = "http://lobstergym-api:8090"
-OPENCLAW_GATEWAY = "http://127.0.0.1:18789"
+WEB_BASE = os.getenv("LOBSTERGYM_WEB_BASE", "http://lobstergym-web:8080")
+API_BASE = os.getenv("LOBSTERGYM_API_BASE", "http://lobstergym-api:8090")
 
 # How long to wait for the agent to finish a task (seconds)
 TASK_TIMEOUT = 120
@@ -267,7 +267,9 @@ def _summarize(val: Any, max_len: int = 200) -> Any:
 def send_task_to_agent(instruction: str) -> str:
     """Send a task instruction to the OpenClaw agent.
 
-    Uses ``openclaw agent --message`` CLI for simplicity.
+    Uses ``openclaw agent --local --message`` so the eval runs inside the
+    current container/network namespace and can resolve the mock service
+    hostnames directly.
 
     Args:
         instruction: Natural-language instruction.
@@ -277,7 +279,7 @@ def send_task_to_agent(instruction: str) -> str:
     """
     try:
         result = subprocess.run(
-            ["openclaw", "agent", "--message", instruction],
+            ["openclaw", "agent", "--local", "--message", instruction],
             capture_output=True,
             text=True,
             timeout=TASK_TIMEOUT,
