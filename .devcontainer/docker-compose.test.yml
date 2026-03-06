@@ -63,7 +63,17 @@ services:
         mkdir -p /root/.openclaw/workspace/skills &&
         cp -r /workspace/skills/clawgraph /root/.openclaw/workspace/skills/ &&
         pip install -e /workspace &&
-        echo '{\"agent\": {\"model\": \"openai/gpt-4o-mini\"}}' > /root/.openclaw/openclaw.json &&
+        cat > /root/.openclaw/openclaw.json << 'CONF'
+        {
+          "agents": {
+            "defaults": {
+              "model": {
+                "primary": "openai/gpt-4o-mini"
+              }
+            }
+          }
+        }
+        CONF
         echo '=== Starting OpenClaw gateway on port 18789 ===' &&
         echo 'WebChat/Control UI: http://127.0.0.1:18789/' &&
         openclaw gateway --port 18789 --verbose
