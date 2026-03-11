@@ -374,14 +374,19 @@ services:
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENCLAW_GATEWAY_TOKEN=${OPENCLAW_GATEWAY_TOKEN:-lobstergym-dev-token}
+      - OPENCLAW_GATEWAY_HOST=openclaw-clawgraph
+      - OPENCLAW_ALLOW_INSECURE_PRIVATE_WS=1
       - LOBSTERGYM_WEB_BASE=http://lobstergym-web:8080
       - LOBSTERGYM_API_BASE=http://lobstergym-api:8090
+      - LOBSTERGYM_DEBUG=1
       - LITELLM_LOCAL_MODEL_COST_MAP=True
     volumes:
       - ..:/workspace:cached
       - openclaw-clawgraph-home:/root/.openclaw
     working_dir: /workspace
     depends_on:
+      openclaw-clawgraph:
+        condition: service_healthy
       lobstergym-web:
         condition: service_healthy
       lobstergym-api:
@@ -390,51 +395,26 @@ services:
     command:
       - |
         echo '🦞 LobsterGym Eval — ClawGraph Profile'
-        mkdir -p /root/.openclaw/workspace/skills
-        rm -rf /root/.openclaw/workspace/skills/clawgraph
-        cp -r /workspace/skills/clawgraph /root/.openclaw/workspace/skills/
-        pip install -e /workspace 2>/dev/null
-        pip install requests 2>/dev/null
+        # Resolve Docker hostname to IP for OpenClaw's private-WS security check
+        GATEWAY_IP=$$(getent hosts $${OPENCLAW_GATEWAY_HOST} | awk '{print $$1}')
+        export OPENCLAW_GATEWAY_URL="ws://$${GATEWAY_IP}:18789"
+        echo "Gateway URL: $$OPENCLAW_GATEWAY_URL"
+        # Overwrite config to remove mode=local (volume has gateway's local config)
         cat > /root/.openclaw/openclaw.json << CONF
         {
           "gateway": {
-            "mode": "local",
             "auth": {
               "mode": "token",
               "token": "$${OPENCLAW_GATEWAY_TOKEN:-lobstergym-dev-token}"
             }
-          },
-          "agents": {
-            "defaults": {
-              "model": {
-                "primary": "openai/gpt-5-mini"
-              }
-            }
-          },
-          "browser": {
-            "enabled": true,
-            "headless": true,
-            "noSandbox": true,
-            "ssrfPolicy": {
-              "dangerouslyAllowPrivateNetwork": true
-            }
           }
         }
         CONF
-        # Start gateway for tool-use support (browser, HTTP, memory)
-        openclaw gateway --port 18789 --verbose &
-        GATEWAY_PID=$$!
-        for i in $(seq 1 60); do
-          if python -c "import socket; s=socket.create_connection(('127.0.0.1', 18789), 2); s.close()" 2>/dev/null; then
-            echo 'OPENCLAW_GATEWAY_READY profile=clawgraph port=18789'
-            break
-          fi
-          sleep 1
-        done
+        pip install -e /workspace 2>/dev/null
+        pip install requests 2>/dev/null
         python -m lobstergym.eval.runner \
           --profile clawgraph \
           --output /workspace/lobstergym/reports/eval-clawgraph.json
-        kill $$GATEWAY_PID 2>/dev/null || true
         echo ''
         echo 'Report: lobstergym/reports/eval-clawgraph.json'
 
@@ -448,14 +428,19 @@ services:
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENCLAW_GATEWAY_TOKEN=${OPENCLAW_GATEWAY_TOKEN:-lobstergym-dev-token}
+      - OPENCLAW_GATEWAY_HOST=openclaw-default
+      - OPENCLAW_ALLOW_INSECURE_PRIVATE_WS=1
       - LOBSTERGYM_WEB_BASE=http://lobstergym-web:8080
       - LOBSTERGYM_API_BASE=http://lobstergym-api:8090
+      - LOBSTERGYM_DEBUG=1
       - LITELLM_LOCAL_MODEL_COST_MAP=True
     volumes:
       - ..:/workspace:cached
       - openclaw-default-home:/root/.openclaw
     working_dir: /workspace
     depends_on:
+      openclaw-default:
+        condition: service_healthy
       lobstergym-web:
         condition: service_healthy
       lobstergym-api:
@@ -464,48 +449,26 @@ services:
     command:
       - |
         echo '🦞 LobsterGym Eval — Default Profile'
+        # Resolve Docker hostname to IP for OpenClaw's private-WS security check
+        GATEWAY_IP=$$(getent hosts $${OPENCLAW_GATEWAY_HOST} | awk '{print $$1}')
+        export OPENCLAW_GATEWAY_URL="ws://$${GATEWAY_IP}:18789"
+        echo "Gateway URL: $$OPENCLAW_GATEWAY_URL"
+        # Overwrite config to remove mode=local (volume has gateway's local config)
         cat > /root/.openclaw/openclaw.json << CONF
         {
           "gateway": {
-            "mode": "local",
             "auth": {
               "mode": "token",
               "token": "$${OPENCLAW_GATEWAY_TOKEN:-lobstergym-dev-token}"
-            }
-          },
-          "agents": {
-            "defaults": {
-              "model": {
-                "primary": "openai/gpt-5-mini"
-              }
-            }
-          },
-          "browser": {
-            "enabled": true,
-            "headless": true,
-            "noSandbox": true,
-            "ssrfPolicy": {
-              "dangerouslyAllowPrivateNetwork": true
             }
           }
         }
         CONF
         pip install -e /workspace 2>/dev/null
         pip install requests 2>/dev/null
-        # Start gateway for tool-use support (browser, HTTP, memory)
-        openclaw gateway --port 18789 --verbose &
-        GATEWAY_PID=$$!
-        for i in $(seq 1 60); do
-          if python -c "import socket; s=socket.create_connection(('127.0.0.1', 18789), 2); s.close()" 2>/dev/null; then
-            echo 'OPENCLAW_GATEWAY_READY profile=default port=18789'
-            break
-          fi
-          sleep 1
-        done
         python -m lobstergym.eval.runner \
           --profile default \
           --output /workspace/lobstergym/reports/eval-default.json
-        kill $$GATEWAY_PID 2>/dev/null || true
         echo ''
         echo 'Report: lobstergym/reports/eval-default.json'
 
