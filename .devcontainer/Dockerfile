@@ -8,6 +8,9 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
 # Install OpenClaw globally (npm package is "openclaw")
 RUN npm install -g openclaw@latest
 
+# Install Playwright Chromium for browser-automation tasks
+RUN npx playwright install --with-deps chromium
+
 # Create ClawGraph + OpenClaw config directories
 RUN mkdir -p /root/.clawgraph /root/.openclaw/workspace/skills
 

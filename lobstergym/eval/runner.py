@@ -267,9 +267,9 @@ def _summarize(val: Any, max_len: int = 200) -> Any:
 def send_task_to_agent(instruction: str) -> str:
     """Send a task instruction to the OpenClaw agent.
 
-    Uses ``openclaw agent --local --message`` so the eval runs inside the
-    current container/network namespace and can resolve the mock service
-    hostnames directly.
+    Connects to the running OpenClaw gateway so the agent has full tool
+    support (browser, HTTP, memory).  A local gateway must be started
+    before the eval runner is invoked.
 
     Args:
         instruction: Natural-language instruction.
@@ -279,7 +279,7 @@ def send_task_to_agent(instruction: str) -> str:
     """
     try:
         result = subprocess.run(
-            ["openclaw", "agent", "--local", "--message", instruction],
+            ["openclaw", "agent", "--json", "--message", instruction],
             capture_output=True,
             text=True,
             timeout=TASK_TIMEOUT,
