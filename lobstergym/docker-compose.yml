@@ -282,12 +282,20 @@ services:
           }
         }
         CONF
-        openclaw agent --local --to +15555550123 --json --message "If you are running inside this container, reply with exactly CONTAINER_SIGNAL_OK." > /tmp/openclaw-smoke.json
+        openclaw agent --local --to +15555550123 --json --message "If you are running inside this container, reply with exactly CONTAINER_SIGNAL_OK." > /tmp/openclaw-smoke.json 2>&1
         python - <<'PY'
         import json
         from pathlib import Path
 
-        data = json.loads(Path('/tmp/openclaw-smoke.json').read_text())
+        raw = Path('/tmp/openclaw-smoke.json').read_text().strip()
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            start = raw.find('{')
+            end = raw.rfind('}')
+            if start == -1 or end == -1:
+                raise SystemExit(f'No JSON found in openclaw output:\n{raw[:500]}')
+            data = json.loads(raw[start:end+1])
         meta = data.get('meta', {}).get('agentMeta', {})
         session_id = meta.get('sessionId')
         model = meta.get('model')
@@ -348,12 +356,20 @@ services:
           }
         }
         CONF
-        openclaw agent --local --to +15555550123 --json --message "If you are running inside this container, reply with exactly CONTAINER_SIGNAL_OK." > /tmp/openclaw-smoke.json
+        openclaw agent --local --to +15555550123 --json --message "If you are running inside this container, reply with exactly CONTAINER_SIGNAL_OK." > /tmp/openclaw-smoke.json 2>&1
         python - <<'PY'
         import json
         from pathlib import Path
 
-        data = json.loads(Path('/tmp/openclaw-smoke.json').read_text())
+        raw = Path('/tmp/openclaw-smoke.json').read_text().strip()
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            start = raw.find('{')
+            end = raw.rfind('}')
+            if start == -1 or end == -1:
+                raise SystemExit(f'No JSON found in openclaw output:\n{raw[:500]}')
+            data = json.loads(raw[start:end+1])
         meta = data.get('meta', {}).get('agentMeta', {})
         session_id = meta.get('sessionId')
         model = meta.get('model')
