@@ -105,14 +105,21 @@ services:
           "agents": {
             "defaults": {
               "model": {
-                "primary": "openai/gpt-5-mini"
+                "primary": "openai/gpt-5.4"
               }
+            }
+          },
+          "channels": {
+            "whatsapp": {
+              "dmPolicy": "open",
+              "allowFrom": ["*"]
             }
           },
           "browser": {
             "enabled": true,
             "headless": true,
             "noSandbox": true,
+            "executablePath": "/usr/bin/google-chrome-stable",
             "ssrfPolicy": {
               "dangerouslyAllowPrivateNetwork": true
             }
@@ -198,14 +205,21 @@ services:
           "agents": {
             "defaults": {
               "model": {
-                "primary": "openai/gpt-5-mini"
+                "primary": "openai/gpt-5.4"
               }
+            }
+          },
+          "channels": {
+            "whatsapp": {
+              "dmPolicy": "open",
+              "allowFrom": ["*"]
             }
           },
           "browser": {
             "enabled": true,
             "headless": true,
             "noSandbox": true,
+            "executablePath": "/usr/bin/google-chrome-stable",
             "ssrfPolicy": {
               "dangerouslyAllowPrivateNetwork": true
             }
@@ -241,7 +255,7 @@ services:
       - LITELLM_LOCAL_MODEL_COST_MAP=True
     volumes:
       - ..:/workspace:cached
-      - openclaw-clawgraph-home:/root/.openclaw
+      - smoke-clawgraph-home:/root/.openclaw
     working_dir: /workspace
     depends_on:
       lobstergym-web:
@@ -268,7 +282,7 @@ services:
           "agents": {
             "defaults": {
               "model": {
-                "primary": "openai/gpt-5-mini"
+                "primary": "openai/gpt-5.4"
               }
             }
           },
@@ -276,6 +290,7 @@ services:
             "enabled": true,
             "headless": true,
             "noSandbox": true,
+            "executablePath": "/usr/bin/google-chrome-stable",
             "ssrfPolicy": {
               "dangerouslyAllowPrivateNetwork": true
             }
@@ -319,7 +334,7 @@ services:
       - LITELLM_LOCAL_MODEL_COST_MAP=True
     volumes:
       - ..:/workspace:cached
-      - openclaw-default-home:/root/.openclaw
+      - smoke-default-home:/root/.openclaw
     working_dir: /workspace
     depends_on:
       lobstergym-web:
@@ -342,7 +357,7 @@ services:
           "agents": {
             "defaults": {
               "model": {
-                "primary": "openai/gpt-5-mini"
+                "primary": "openai/gpt-5.4"
               }
             }
           },
@@ -350,6 +365,7 @@ services:
             "enabled": true,
             "headless": true,
             "noSandbox": true,
+            "executablePath": "/usr/bin/google-chrome-stable",
             "ssrfPolicy": {
               "dangerouslyAllowPrivateNetwork": true
             }
@@ -398,7 +414,7 @@ services:
       - LITELLM_LOCAL_MODEL_COST_MAP=True
     volumes:
       - ..:/workspace:cached
-      - openclaw-clawgraph-home:/root/.openclaw
+      - eval-clawgraph-home:/root/.openclaw
     working_dir: /workspace
     depends_on:
       openclaw-clawgraph:
@@ -415,7 +431,11 @@ services:
         GATEWAY_IP=$$(getent hosts $${OPENCLAW_GATEWAY_HOST} | awk '{print $$1}')
         export OPENCLAW_GATEWAY_URL="ws://$${GATEWAY_IP}:18789"
         echo "Gateway URL: $$OPENCLAW_GATEWAY_URL"
-        # Overwrite config to remove mode=local (volume has gateway's local config)
+        # Install ClawGraph skill + package for embedded fallback
+        mkdir -p /root/.openclaw/workspace/skills
+        cp -r /workspace/skills/clawgraph /root/.openclaw/workspace/skills/
+        pip install -e /workspace 2>/dev/null
+        pip install requests 2>/dev/null
         cat > /root/.openclaw/openclaw.json << CONF
         {
           "gateway": {
@@ -423,11 +443,31 @@ services:
               "mode": "token",
               "token": "$${OPENCLAW_GATEWAY_TOKEN:-lobstergym-dev-token}"
             }
+          },
+          "agents": {
+            "defaults": {
+              "model": {
+                "primary": "openai/gpt-5.4"
+              }
+            }
+          },
+          "channels": {
+            "whatsapp": {
+              "dmPolicy": "open",
+              "allowFrom": ["*"]
+            }
+          },
+          "browser": {
+            "enabled": true,
+            "headless": true,
+            "noSandbox": true,
+            "executablePath": "/usr/bin/google-chrome-stable",
+            "ssrfPolicy": {
+              "dangerouslyAllowPrivateNetwork": true
+            }
           }
         }
         CONF
-        pip install -e /workspace 2>/dev/null
-        pip install requests 2>/dev/null
         python -m lobstergym.eval.runner \
           --profile clawgraph \
           --output /workspace/lobstergym/reports/eval-clawgraph.json
@@ -452,7 +492,7 @@ services:
       - LITELLM_LOCAL_MODEL_COST_MAP=True
     volumes:
       - ..:/workspace:cached
-      - openclaw-default-home:/root/.openclaw
+      - eval-default-home:/root/.openclaw
     working_dir: /workspace
     depends_on:
       openclaw-default:
@@ -469,7 +509,8 @@ services:
         GATEWAY_IP=$$(getent hosts $${OPENCLAW_GATEWAY_HOST} | awk '{print $$1}')
         export OPENCLAW_GATEWAY_URL="ws://$${GATEWAY_IP}:18789"
         echo "Gateway URL: $$OPENCLAW_GATEWAY_URL"
-        # Overwrite config to remove mode=local (volume has gateway's local config)
+        pip install -e /workspace 2>/dev/null
+        pip install requests 2>/dev/null
         cat > /root/.openclaw/openclaw.json << CONF
         {
           "gateway": {
@@ -477,11 +518,31 @@ services:
               "mode": "token",
               "token": "$${OPENCLAW_GATEWAY_TOKEN:-lobstergym-dev-token}"
             }
+          },
+          "agents": {
+            "defaults": {
+              "model": {
+                "primary": "openai/gpt-5.4"
+              }
+            }
+          },
+          "channels": {
+            "whatsapp": {
+              "dmPolicy": "open",
+              "allowFrom": ["*"]
+            }
+          },
+          "browser": {
+            "enabled": true,
+            "headless": true,
+            "noSandbox": true,
+            "executablePath": "/usr/bin/google-chrome-stable",
+            "ssrfPolicy": {
+              "dangerouslyAllowPrivateNetwork": true
+            }
           }
         }
         CONF
-        pip install -e /workspace 2>/dev/null
-        pip install requests 2>/dev/null
         python -m lobstergym.eval.runner \
           --profile default \
           --output /workspace/lobstergym/reports/eval-default.json
@@ -491,3 +552,7 @@ services:
 volumes:
   openclaw-clawgraph-home:
   openclaw-default-home:
+  smoke-clawgraph-home:
+  smoke-default-home:
+  eval-clawgraph-home:
+  eval-default-home:
