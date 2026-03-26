@@ -8,7 +8,14 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
 # Install OpenClaw globally (npm package is "openclaw")
 RUN npm install -g openclaw@latest
 
-# Install Playwright Chromium for browser-automation tasks
+# Install Google Chrome (OpenClaw browser tool needs a real system browser)
+RUN wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb \
+    && dpkg -i google-chrome-stable_current_amd64.deb || true \
+    && apt-get install -f -y \
+    && rm google-chrome-stable_current_amd64.deb \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Install Playwright Chromium for browser-automation tasks (navigate/act/snapshot)
 RUN npx playwright install --with-deps chromium
 
 # Create ClawGraph + OpenClaw config directories

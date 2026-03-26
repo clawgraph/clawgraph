@@ -1,13 +1,8 @@
 ---
 name: clawgraph
-description: Graph-based memory using ClawGraph — store, query, and recall structured knowledge across sessions
-version: 0.1.0
-requires:
-  bins:
-    - python3
-    - pip
-  env:
-    - OPENAI_API_KEY
+description: Graph-based memory — store, query, and recall structured knowledge across sessions
+version: 0.1.1
+metadata: {"openclaw": {"requires": {"bins": ["clawgraph"], "env": ["OPENAI_API_KEY"]}, "primaryEnv": "OPENAI_API_KEY", "install": [{"id": "pip", "kind": "node", "label": "Install ClawGraph (pip)", "bins": ["clawgraph"]}]}}
 tags:
   - memory
   - knowledge-graph
@@ -16,126 +11,77 @@ tags:
 
 # ClawGraph Memory Skill
 
-You have access to **ClawGraph**, a graph-based memory system that lets you store facts as entities and relationships in a persistent knowledge graph. Use it to remember information across conversations.
+You have access to **ClawGraph**, a graph-based memory CLI that stores facts as entities and relationships in a persistent knowledge graph. Use it to remember information across conversations.
 
-## Installation
+## When to Use
+
+- User tells you something worth remembering (names, preferences, projects, relationships)
+- You need to recall previously stored information
+- User asks "do you remember..." or "what do you know about..."
+- Building up knowledge about a project, team, or domain over time
+
+## Store Facts (CLI)
 
 ```bash
-pip install clawgraph
+# Single fact
+clawgraph add "Alice is a senior engineer at Acme Corp" --output json
+
+# Multiple facts at once (one LLM call — much faster)
+clawgraph add-batch "Bob manages the design team" "Alice and Bob work on Project Atlas" --output json
 ```
 
-## When to Use This Skill
+Each fact is automatically decomposed into entities and relationships using MERGE (idempotent — safe to add the same fact twice).
 
-- When the user tells you something worth remembering (names, preferences, projects, relationships)
-- When you need to recall previously stored information
-- When the user asks "do you remember..." or "what do you know about..."
-- When building up knowledge about a project, team, or domain over time
+## Query Memory (CLI)
 
-## How to Store Facts
+```bash
+# Natural language question — returns matching results
+clawgraph query "Who works at Acme Corp?" --output json
 
-Use the ClawGraph Python API to add facts as natural language statements:
+# Inspect the full graph
+clawgraph export --output json
+```
+
+## Common Patterns
+
+```bash
+# Store, then verify
+clawgraph add "Carol is the CTO of Acme Corp" --output json
+clawgraph query "Who is the CTO of Acme Corp?" --output json
+
+# Batch store related facts
+clawgraph add-batch \
+  "Project Atlas launches Q3 2026" \
+  "Alice leads Project Atlas" \
+  "Atlas uses a graph database backend" \
+  --output json
+
+# Show what's stored
+clawgraph export --output json
+
+# View the ontology (schema)
+clawgraph ontology --output json
+```
+
+## Python API (for complex workflows)
+
+When you need programmatic control, use the Python API:
 
 ```python
 from clawgraph.memory import Memory
 
 mem = Memory()
-
-# Single fact
-mem.add("Alice is a software engineer at Acme Corp")
-
-# Multiple facts at once (faster — one LLM call)
-mem.add_batch([
-    "Bob manages the design team",
-    "Alice and Bob are working on Project Atlas",
-    "Project Atlas launches in Q3 2026",
-])
-```
-
-Each fact is automatically decomposed into entities and relationships, then stored using MERGE (idempotent — safe to add the same fact multiple times).
-
-## How to Query Memory
-
-Ask natural language questions to retrieve stored knowledge:
-
-```python
+mem.add("Alice works at Acme Corp")
 results = mem.query("Who works at Acme Corp?")
-# Returns: [{"e.name": "Alice", "e.label": "Person", ...}]
-
-results = mem.query("What projects is Alice working on?")
+print(results)
+mem.add_batch(["Bob is a designer", "Bob works at Acme Corp"])
 ```
 
-## How to List Everything
+## Key Details
 
-```python
-# All entities
-mem.entities()
-
-# All relationships  
-mem.relationships()
-
-# Full export (entities + relationships + ontology)
-mem.export()
-```
-
-## Configuration
-
-ClawGraph uses `~/.clawgraph/config.yaml` for defaults, or you can pass config directly:
-
-```python
-mem = Memory(config={
-    "llm": {"model": "gpt-4o-mini"},
-    "db": {"path": "~/.clawgraph/data"},
-})
-```
-
-The LLM model can be any provider supported by LiteLLM (OpenAI, Anthropic, Ollama, etc.).
-
-## Persistence
-
-The graph database persists to disk automatically at `~/.clawgraph/data`. Data survives restarts.
-
-### Snapshots
-
-```python
-# Save a backup
-mem.save_snapshot("memory-backup.tar.gz")
-
-# Restore from backup
-restored = Memory.from_snapshot("memory-backup.tar.gz", "/path/to/restore")
-```
-
-### Seed Facts on Startup
-
-```python
-mem = Memory(init_facts=[
-    "The user's name is Alice",
-    "Alice prefers Python over JavaScript",
-])
-```
-
-`init_facts` uses MERGE, so it's safe to call on every startup — duplicates are ignored.
-
-## Best Practices
-
-1. **Store facts as clear, simple statements** — "Alice works at Acme" not "I think maybe Alice might work at Acme"
-2. **Use add_batch for multiple facts** — it's significantly faster than calling add() in a loop
-3. **Query before adding** — check if information already exists to avoid confusion
-4. **Use init_facts for baseline knowledge** — things the agent should always know
-5. **Export periodically** — use `mem.export()` to inspect what's stored
-
-## Environment Variables
-
-- `OPENAI_API_KEY` — Required for default model (gpt-4o-mini)
-- `ANTHROPIC_API_KEY` — For Claude models
-- `CLAWGRAPH_MODEL` — Override default model via env var
-
-## CLI Usage
-
-ClawGraph also has a CLI for interactive use:
-
-```bash
-clawgraph add "Alice is an engineer at Acme"
-clawgraph query "Who works at Acme?"
-clawgraph ontology show
-clawgraph export
-```
+- **Persistence**: Data stored at `~/.clawgraph/data` — survives restarts
+- **Idempotent**: Uses MERGE — adding the same fact twice won't create duplicates
+- **JSON output**: Always use `--output json` for structured, parseable results
+- **Config**: `~/.clawgraph/config.yaml` for defaults (model, db path)
+- **Models**: Any LiteLLM-supported provider (OpenAI, Anthropic, Ollama, etc.)
+- **Env vars**: `OPENAI_API_KEY` (required), `CLAWGRAPH_MODEL` (optional override)
