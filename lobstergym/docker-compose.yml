@@ -1,5 +1,3 @@
-version: "3.8"
-
 # =======================================================================
 # LobsterGym — Full evaluation stack
 #
@@ -50,8 +48,21 @@ services:
       dockerfile: .devcontainer/Dockerfile
     ports:
       - "18789:18789"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import socket; s=socket.create_connection(('127.0.0.1', 18789), 5); s.close()",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENCLAW_GATEWAY_TOKEN=${OPENCLAW_GATEWAY_TOKEN:-lobstergym-dev-token}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - LITELLM_LOCAL_MODEL_COST_MAP=True
     volumes:
@@ -63,29 +74,66 @@ services:
         condition: service_healthy
       lobstergym-api:
         condition: service_healthy
-    command: >
-      bash -c "
-        echo '=== OpenClaw + ClawGraph Gateway ===' &&
-        mkdir -p /root/.openclaw/workspace/skills &&
-        cp -r /workspace/skills/clawgraph /root/.openclaw/workspace/skills/ &&
-        pip install -e /workspace 2>/dev/null &&
-        cat > /root/.openclaw/openclaw.json << 'CONF'
+    entrypoint: ["bash", "-lc"]
+    command:
+      - |
+        echo '=== OpenClaw + ClawGraph Gateway ==='
+        mkdir -p /root/.openclaw/workspace/skills
+        cp -r /workspace/skills/clawgraph /root/.openclaw/workspace/skills/
+        pip install -e /workspace 2>/dev/null
+        cat > /root/.openclaw/openclaw.json << CONF
         {
-          \"agent\": {
-            \"model\": \"openai/gpt-4o-mini\"
+          "gateway": {
+            "mode": "local",
+            "bind": "lan",
+            "auth": {
+              "mode": "token",
+              "token": "$${OPENCLAW_GATEWAY_TOKEN:-lobstergym-dev-token}"
+            },
+            "controlUi": {
+              "enabled": true,
+              "dangerouslyDisableDeviceAuth": true,
+              "allowInsecureAuth": true,
+              "allowedOrigins": [
+                "http://localhost:18789",
+                "http://127.0.0.1:18789",
+                "http://localhost:18790",
+                "http://127.0.0.1:18790"
+              ]
+            }
           },
-          \"browser\": {
-            \"enabled\": true,
-            \"headless\": true,
-            \"noSandbox\": true,
-            \"ssrfPolicy\": {
-              \"dangerouslyAllowPrivateNetwork\": true
+          "agents": {
+            "defaults": {
+              "model": {
+                "primary": "openai/gpt-5-mini"
+              }
+            }
+          },
+          "browser": {
+            "enabled": true,
+            "headless": true,
+            "noSandbox": true,
+            "ssrfPolicy": {
+              "dangerouslyAllowPrivateNetwork": true
             }
           }
         }
-      CONF
-        openclaw gateway --port 18789 --verbose
-      "
+        CONF
+        openclaw gateway --bind lan --port 18789 --verbose &
+        GATEWAY_PID=$$!
+        for i in $(seq 1 60); do
+          if python - <<'PY' >/dev/null 2>&1
+        import socket
+        s = socket.create_connection(("127.0.0.1", 18789), 2)
+        s.close()
+        PY
+          then
+            echo 'OPENCLAW_GATEWAY_READY profile=clawgraph port=18789'
+            break
+          fi
+          sleep 1
+        done
+        wait $$GATEWAY_PID
 
   # -------------------------------------------------------------------
   # OpenClaw gateway WITHOUT ClawGraph (default profile for comparison)
@@ -96,9 +144,23 @@ services:
       dockerfile: .devcontainer/Dockerfile
     ports:
       - "18790:18789"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import socket; s=socket.create_connection(('127.0.0.1', 18789), 5); s.close()",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENCLAW_GATEWAY_TOKEN=${OPENCLAW_GATEWAY_TOKEN:-lobstergym-dev-token}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - LITELLM_LOCAL_MODEL_COST_MAP=True
     volumes:
       - ..:/workspace:cached
       - openclaw-default-home:/root/.openclaw
@@ -108,26 +170,215 @@ services:
         condition: service_healthy
       lobstergym-api:
         condition: service_healthy
-    command: >
-      bash -c "
-        echo '=== OpenClaw Default Gateway ===' &&
-        cat > /root/.openclaw/openclaw.json << 'CONF'
+    entrypoint: ["bash", "-lc"]
+    command:
+      - |
+        echo '=== OpenClaw Default Gateway ==='
+        cat > /root/.openclaw/openclaw.json << CONF
         {
-          \"agent\": {
-            \"model\": \"openai/gpt-4o-mini\"
+          "gateway": {
+            "mode": "local",
+            "bind": "lan",
+            "auth": {
+              "mode": "token",
+              "token": "$${OPENCLAW_GATEWAY_TOKEN:-lobstergym-dev-token}"
+            },
+            "controlUi": {
+              "enabled": true,
+              "dangerouslyDisableDeviceAuth": true,
+              "allowInsecureAuth": true,
+              "allowedOrigins": [
+                "http://localhost:18789",
+                "http://127.0.0.1:18789",
+                "http://localhost:18790",
+                "http://127.0.0.1:18790"
+              ]
+            }
           },
-          \"browser\": {
-            \"enabled\": true,
-            \"headless\": true,
-            \"noSandbox\": true,
-            \"ssrfPolicy\": {
-              \"dangerouslyAllowPrivateNetwork\": true
+          "agents": {
+            "defaults": {
+              "model": {
+                "primary": "openai/gpt-5-mini"
+              }
+            }
+          },
+          "browser": {
+            "enabled": true,
+            "headless": true,
+            "noSandbox": true,
+            "ssrfPolicy": {
+              "dangerouslyAllowPrivateNetwork": true
             }
           }
         }
-      CONF
-        openclaw gateway --port 18789 --verbose
-      "
+        CONF
+        openclaw gateway --bind lan --port 18789 --verbose &
+        GATEWAY_PID=$$!
+        for i in $(seq 1 60); do
+          if python - <<'PY' >/dev/null 2>&1
+        import socket
+        s = socket.create_connection(("127.0.0.1", 18789), 2)
+        s.close()
+        PY
+          then
+            echo 'OPENCLAW_GATEWAY_READY profile=default port=18789'
+            break
+          fi
+          sleep 1
+        done
+        wait $$GATEWAY_PID
+
+  # -------------------------------------------------------------------
+  # Smoke check — ClawGraph profile
+  # -------------------------------------------------------------------
+  smoke-clawgraph:
+    build:
+      context: ..
+      dockerfile: .devcontainer/Dockerfile
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENCLAW_GATEWAY_TOKEN=${OPENCLAW_GATEWAY_TOKEN:-lobstergym-dev-token}
+      - LITELLM_LOCAL_MODEL_COST_MAP=True
+    volumes:
+      - ..:/workspace:cached
+      - openclaw-clawgraph-home:/root/.openclaw
+    working_dir: /workspace
+    depends_on:
+      lobstergym-web:
+        condition: service_healthy
+      lobstergym-api:
+        condition: service_healthy
+    entrypoint: ["bash", "-c"]
+    command:
+      - |
+        echo '🦞 LobsterGym Smoke — ClawGraph Profile'
+        mkdir -p /root/.openclaw/workspace/skills
+        rm -rf /root/.openclaw/workspace/skills/clawgraph
+        cp -r /workspace/skills/clawgraph /root/.openclaw/workspace/skills/
+        pip install -e /workspace 2>/dev/null
+        cat > /root/.openclaw/openclaw.json << CONF
+        {
+          "gateway": {
+            "mode": "local",
+            "auth": {
+              "mode": "token",
+              "token": "$${OPENCLAW_GATEWAY_TOKEN:-lobstergym-dev-token}"
+            }
+          },
+          "agents": {
+            "defaults": {
+              "model": {
+                "primary": "openai/gpt-5-mini"
+              }
+            }
+          },
+          "browser": {
+            "enabled": true,
+            "headless": true,
+            "noSandbox": true,
+            "ssrfPolicy": {
+              "dangerouslyAllowPrivateNetwork": true
+            }
+          }
+        }
+        CONF
+        openclaw agent --local --to +15555550123 --json --message "If you are running inside this container, reply with exactly CONTAINER_SIGNAL_OK." > /tmp/openclaw-smoke.json 2>&1
+        python - <<'PY'
+        import json
+        from pathlib import Path
+
+        raw = Path('/tmp/openclaw-smoke.json').read_text().strip()
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            start = raw.find('{')
+            end = raw.rfind('}')
+            if start == -1 or end == -1:
+                raise SystemExit(f'No JSON found in openclaw output:\n{raw[:500]}')
+            data = json.loads(raw[start:end+1])
+        meta = data.get('meta', {}).get('agentMeta', {})
+        session_id = meta.get('sessionId')
+        model = meta.get('model')
+        if not session_id or not model:
+            raise SystemExit('OpenClaw smoke failed: missing sessionId/model in response')
+        payloads = data.get('payloads', [])
+        text = payloads[0].get('text', '') if payloads else ''
+        print(f'OPENCLAW_SMOKE_OK profile=clawgraph sessionId={session_id} model={model} text={text[:120]!r}')
+        PY
+
+  # -------------------------------------------------------------------
+  # Smoke check — Default profile
+  # -------------------------------------------------------------------
+  smoke-default:
+    build:
+      context: ..
+      dockerfile: .devcontainer/Dockerfile
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENCLAW_GATEWAY_TOKEN=${OPENCLAW_GATEWAY_TOKEN:-lobstergym-dev-token}
+      - LITELLM_LOCAL_MODEL_COST_MAP=True
+    volumes:
+      - ..:/workspace:cached
+      - openclaw-default-home:/root/.openclaw
+    working_dir: /workspace
+    depends_on:
+      lobstergym-web:
+        condition: service_healthy
+      lobstergym-api:
+        condition: service_healthy
+    entrypoint: ["bash", "-c"]
+    command:
+      - |
+        echo '🦞 LobsterGym Smoke — Default Profile'
+        cat > /root/.openclaw/openclaw.json << CONF
+        {
+          "gateway": {
+            "mode": "local",
+            "auth": {
+              "mode": "token",
+              "token": "$${OPENCLAW_GATEWAY_TOKEN:-lobstergym-dev-token}"
+            }
+          },
+          "agents": {
+            "defaults": {
+              "model": {
+                "primary": "openai/gpt-5-mini"
+              }
+            }
+          },
+          "browser": {
+            "enabled": true,
+            "headless": true,
+            "noSandbox": true,
+            "ssrfPolicy": {
+              "dangerouslyAllowPrivateNetwork": true
+            }
+          }
+        }
+        CONF
+        openclaw agent --local --to +15555550123 --json --message "If you are running inside this container, reply with exactly CONTAINER_SIGNAL_OK." > /tmp/openclaw-smoke.json 2>&1
+        python - <<'PY'
+        import json
+        from pathlib import Path
+
+        raw = Path('/tmp/openclaw-smoke.json').read_text().strip()
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            start = raw.find('{')
+            end = raw.rfind('}')
+            if start == -1 or end == -1:
+                raise SystemExit(f'No JSON found in openclaw output:\n{raw[:500]}')
+            data = json.loads(raw[start:end+1])
+        meta = data.get('meta', {}).get('agentMeta', {})
+        session_id = meta.get('sessionId')
+        model = meta.get('model')
+        if not session_id or not model:
+            raise SystemExit('OpenClaw smoke failed: missing sessionId/model in response')
+        payloads = data.get('payloads', [])
+        text = payloads[0].get('text', '') if payloads else ''
+        print(f'OPENCLAW_SMOKE_OK profile=default sessionId={session_id} model={model} text={text[:120]!r}')
+        PY
 
   # -------------------------------------------------------------------
   # Eval runner — ClawGraph profile
@@ -136,19 +387,45 @@ services:
     build:
       context: ..
       dockerfile: .devcontainer/Dockerfile
-    network_mode: "service:openclaw-clawgraph"
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENCLAW_GATEWAY_TOKEN=${OPENCLAW_GATEWAY_TOKEN:-lobstergym-dev-token}
+      - OPENCLAW_GATEWAY_HOST=openclaw-clawgraph
+      - OPENCLAW_ALLOW_INSECURE_PRIVATE_WS=1
+      - LOBSTERGYM_WEB_BASE=http://lobstergym-web:8080
+      - LOBSTERGYM_API_BASE=http://lobstergym-api:8090
+      - LOBSTERGYM_DEBUG=1
+      - LITELLM_LOCAL_MODEL_COST_MAP=True
     volumes:
       - ..:/workspace:cached
       - openclaw-clawgraph-home:/root/.openclaw
     working_dir: /workspace
     depends_on:
-      - openclaw-clawgraph
+      openclaw-clawgraph:
+        condition: service_healthy
+      lobstergym-web:
+        condition: service_healthy
+      lobstergym-api:
+        condition: service_healthy
     entrypoint: ["bash", "-c"]
     command:
       - |
         echo '🦞 LobsterGym Eval — ClawGraph Profile'
+        # Resolve Docker hostname to IP for OpenClaw's private-WS security check
+        GATEWAY_IP=$$(getent hosts $${OPENCLAW_GATEWAY_HOST} | awk '{print $$1}')
+        export OPENCLAW_GATEWAY_URL="ws://$${GATEWAY_IP}:18789"
+        echo "Gateway URL: $$OPENCLAW_GATEWAY_URL"
+        # Overwrite config to remove mode=local (volume has gateway's local config)
+        cat > /root/.openclaw/openclaw.json << CONF
+        {
+          "gateway": {
+            "auth": {
+              "mode": "token",
+              "token": "$${OPENCLAW_GATEWAY_TOKEN:-lobstergym-dev-token}"
+            }
+          }
+        }
+        CONF
         pip install -e /workspace 2>/dev/null
         pip install requests 2>/dev/null
         python -m lobstergym.eval.runner \
@@ -164,19 +441,46 @@ services:
     build:
       context: ..
       dockerfile: .devcontainer/Dockerfile
-    network_mode: "service:openclaw-default"
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENCLAW_GATEWAY_TOKEN=${OPENCLAW_GATEWAY_TOKEN:-lobstergym-dev-token}
+      - OPENCLAW_GATEWAY_HOST=openclaw-default
+      - OPENCLAW_ALLOW_INSECURE_PRIVATE_WS=1
+      - LOBSTERGYM_WEB_BASE=http://lobstergym-web:8080
+      - LOBSTERGYM_API_BASE=http://lobstergym-api:8090
+      - LOBSTERGYM_DEBUG=1
+      - LITELLM_LOCAL_MODEL_COST_MAP=True
     volumes:
       - ..:/workspace:cached
       - openclaw-default-home:/root/.openclaw
     working_dir: /workspace
     depends_on:
-      - openclaw-default
+      openclaw-default:
+        condition: service_healthy
+      lobstergym-web:
+        condition: service_healthy
+      lobstergym-api:
+        condition: service_healthy
     entrypoint: ["bash", "-c"]
     command:
       - |
         echo '🦞 LobsterGym Eval — Default Profile'
+        # Resolve Docker hostname to IP for OpenClaw's private-WS security check
+        GATEWAY_IP=$$(getent hosts $${OPENCLAW_GATEWAY_HOST} | awk '{print $$1}')
+        export OPENCLAW_GATEWAY_URL="ws://$${GATEWAY_IP}:18789"
+        echo "Gateway URL: $$OPENCLAW_GATEWAY_URL"
+        # Overwrite config to remove mode=local (volume has gateway's local config)
+        cat > /root/.openclaw/openclaw.json << CONF
+        {
+          "gateway": {
+            "auth": {
+              "mode": "token",
+              "token": "$${OPENCLAW_GATEWAY_TOKEN:-lobstergym-dev-token}"
+            }
+          }
+        }
+        CONF
+        pip install -e /workspace 2>/dev/null
         pip install requests 2>/dev/null
         python -m lobstergym.eval.runner \
           --profile default \

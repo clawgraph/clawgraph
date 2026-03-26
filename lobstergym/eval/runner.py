@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import time
@@ -29,9 +30,8 @@ from .tasks import TASKS, Category, Check, Difficulty, Task, get_tasks
 # Configuration
 # ---------------------------------------------------------------------------
 
-WEB_BASE = "http://lobstergym-web:8080"
-API_BASE = "http://lobstergym-api:8090"
-OPENCLAW_GATEWAY = "http://127.0.0.1:18789"
+WEB_BASE = os.getenv("LOBSTERGYM_WEB_BASE", "http://lobstergym-web:8080")
+API_BASE = os.getenv("LOBSTERGYM_API_BASE", "http://lobstergym-api:8090")
 
 # How long to wait for the agent to finish a task (seconds)
 TASK_TIMEOUT = 120
@@ -267,7 +267,9 @@ def _summarize(val: Any, max_len: int = 200) -> Any:
 def send_task_to_agent(instruction: str) -> str:
     """Send a task instruction to the OpenClaw agent.
 
-    Uses ``openclaw agent --message`` CLI for simplicity.
+    Connects to the running OpenClaw gateway so the agent has full tool
+    support (browser, HTTP, memory).  A local gateway must be started
+    before the eval runner is invoked.
 
     Args:
         instruction: Natural-language instruction.
@@ -277,11 +279,21 @@ def send_task_to_agent(instruction: str) -> str:
     """
     try:
         result = subprocess.run(
-            ["openclaw", "agent", "--message", instruction],
+            [
+                "openclaw", "agent",
+                "--to", "+15555550199",
+                "--json",
+                "--message", instruction,
+            ],
             capture_output=True,
             text=True,
             timeout=TASK_TIMEOUT,
         )
+        # Diagnostic: show agent output for debugging
+        if result.stderr:
+            print(f"\n    [agent stderr] {result.stderr[:300]}", flush=True)
+        if result.returncode != 0:
+            print(f"\n    [agent exit={result.returncode}]", flush=True)
         return result.stdout or result.stderr or "(no output)"
     except subprocess.TimeoutExpired:
         return "(timeout)"
@@ -368,6 +380,10 @@ def run_task(task: Task) -> TaskResult:
             duration_seconds=duration,
             error=str(exc),
         )
+
+    # Diagnostic: dump full agent response for the first task
+    if os.getenv("LOBSTERGYM_DEBUG"):
+        print(f"\n    [agent response] {response[:500]}", flush=True)
 
     # Small delay for state to settle
     time.sleep(2)

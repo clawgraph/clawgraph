@@ -89,8 +89,8 @@ TASKS: list[Task] = [
         id="browser-todo-add",
         name="Add a Todo",
         instruction=(
-            "Go to http://lobstergym-web:8080/todos and add a todo item "
-            'with the text "Buy lobster food". '
+            "Use the browser tool to navigate to http://lobstergym-web:8080/todos. "
+            'Add a todo item with the text "Buy lobster food" by typing into the input field and submitting the form. '
             "Confirm the item appears in the list."
         ),
         category=Category.BROWSER,
@@ -118,9 +118,10 @@ TASKS: list[Task] = [
         id="browser-todo-multi",
         name="Add & Complete Todos",
         instruction=(
-            "Go to http://lobstergym-web:8080/todos. "
-            'Add three items: "Clean the tank", "Feed the shrimp", '
-            '"Update the wiki". Then mark "Feed the shrimp" as done.'
+            "Use the browser tool to navigate to http://lobstergym-web:8080/todos. "
+            'Add three todo items: "Clean the tank", "Feed the shrimp", '
+            '"Update the wiki" by typing into the input field and submitting the form for each. '
+            'Then mark "Feed the shrimp" as done by clicking its checkbox or done button.'
         ),
         category=Category.BROWSER,
         difficulty=Difficulty.MEDIUM,
@@ -148,10 +149,10 @@ TASKS: list[Task] = [
         id="browser-flight-book",
         name="Book a Flight",
         instruction=(
-            "Go to http://lobstergym-web:8080/flights. "
-            "Search for flights from SFO to JFK on 2026-04-10. "
-            "Book the cheapest flight available. "
-            'Use passenger name "Molty Lobster" and email "molty@openclaw.ai".'
+            "Use the browser tool to navigate to http://lobstergym-web:8080/flights. "
+            "Fill in the search form with origin SFO, destination JFK, and date 2026-04-10, then submit it. "
+            "From the results, book the cheapest flight by clicking its Book button. "
+            'On the booking form, enter passenger name "Molty Lobster" and email "molty@openclaw.ai", then submit.'
         ),
         category=Category.BROWSER,
         difficulty=Difficulty.MEDIUM,
@@ -194,11 +195,12 @@ TASKS: list[Task] = [
         id="browser-contact-form",
         name="Submit Contact Form",
         instruction=(
-            "Go to http://lobstergym-web:8080/contact. "
-            "Fill out the multi-step contact form: "
-            'Name: "Pinchy McSnip", Email: "pinchy@reef.com", '
-            'Subject: "Partnership Inquiry", '
-            'Message: "I would like to discuss a potential partnership for reef conservation."'
+            "Use the browser tool to navigate to http://lobstergym-web:8080/contact. "
+            "This is a multi-step form. On each step, fill in the fields and click Next or Submit: "
+            'Step 1 — Name: "Pinchy McSnip", Email: "pinchy@reef.com". '
+            'Step 2 — Subject: "Partnership Inquiry", '
+            'Message: "I would like to discuss a potential partnership for reef conservation." '
+            "Then submit the form."
         ),
         category=Category.BROWSER,
         difficulty=Difficulty.MEDIUM,
@@ -234,10 +236,11 @@ TASKS: list[Task] = [
         id="browser-shop-checkout",
         name="E-Commerce Checkout",
         instruction=(
-            "Go to http://lobstergym-web:8080/shop. "
-            'Add 2 "Lobster Plushie" and 1 "Reef Keyboard" to the cart. '
-            "Then proceed to checkout and place the order. "
-            'Ship to "Molty Lobster" at "42 Ocean Drive, Coral Bay, CB 12345".'
+            "Use the browser tool to navigate to http://lobstergym-web:8080/shop. "
+            'Find the "Lobster Plushie" product and add it to the cart twice (qty 2). '
+            'Find the "Reef Keyboard" product and add it to the cart once (qty 1). '
+            "Then go to the cart, proceed to checkout, and place the order. "
+            'Ship to name "Molty Lobster", address "42 Ocean Drive, Coral Bay, CB 12345".'
         ),
         category=Category.BROWSER,
         difficulty=Difficulty.HARD,
@@ -281,8 +284,11 @@ TASKS: list[Task] = [
         id="api-weather-check",
         name="Check Weather",
         instruction=(
-            "Use the LobsterGym API at http://lobstergym-api:8090 "
-            "to check the weather in San Francisco and Tokyo. "
+            "IMPORTANT: Do NOT use web_fetch — it will fail on internal hosts. "
+            "Use your exec tool to run curl commands instead. "
+            "Run these two commands with exec: "
+            "curl -s http://lobstergym-api:8090/weather/San%20Francisco "
+            "and curl -s http://lobstergym-api:8090/weather/Tokyo "
             "Tell me the temperature and conditions in both cities."
         ),
         category=Category.API,
@@ -302,9 +308,11 @@ TASKS: list[Task] = [
         id="api-email-read",
         name="Read Emails",
         instruction=(
-            "Use the LobsterGym API at http://lobstergym-api:8090 "
-            "to check my email inbox. Read any unread emails and "
-            "give me a summary of what needs my attention."
+            "IMPORTANT: Do NOT use web_fetch — it will fail on internal hosts. "
+            "Use your exec tool to run curl commands instead. "
+            "Run: exec curl -s http://lobstergym-api:8090/email/inbox "
+            "Then read each email by its id: exec curl -s http://lobstergym-api:8090/email/inbox/<id> "
+            "Give me a summary of what needs my attention."
         ),
         category=Category.API,
         difficulty=Difficulty.EASY,
@@ -324,10 +332,12 @@ TASKS: list[Task] = [
         id="api-calendar-schedule",
         name="Schedule Meeting",
         instruction=(
-            "Use the LobsterGym API at http://lobstergym-api:8090 to: "
-            "1. Check my calendar for April 10, 2026. "
-            '2. Schedule a new event: "ClawGraph Demo" at 14:00, '
-            '   90 minutes, with description "Demo graph memory to the team". '
+            "IMPORTANT: Do NOT use web_fetch — it will fail on internal hosts. "
+            "Use your exec tool to run curl commands instead. "
+            "1. Check my calendar: exec curl -s http://lobstergym-api:8090/calendar/events "
+            '2. Schedule a new event: exec curl -s -X POST http://lobstergym-api:8090/calendar/events '
+            '-H "Content-Type: application/json" '
+            '-d \'{"title":"ClawGraph Demo","date":"2026-04-10","time":"14:00","duration_minutes":90,"description":"Demo graph memory to the team"}\' '
             "3. Tell me the full schedule for that day."
         ),
         category=Category.API,
@@ -355,11 +365,14 @@ TASKS: list[Task] = [
         id="api-email-reply",
         name="Reply to Email",
         instruction=(
-            "Use the LobsterGym API at http://lobstergym-api:8090 to: "
-            "1. Read the email from boss@acme.com about the Q1 report. "
-            "2. Send a reply to boss@acme.com with subject "
-            '"Re: Q1 Report Needed" confirming you will have it ready by Friday. '
-            "Include relevant details in the body."
+            "IMPORTANT: Do NOT use web_fetch — it will fail on internal hosts. "
+            "Use your exec tool to run curl commands instead. "
+            "1. Read the inbox: exec curl -s http://lobstergym-api:8090/email/inbox "
+            "Then read the email from boss@acme.com by its id. "
+            "2. Send a reply: exec curl -s -X POST http://lobstergym-api:8090/email/send "
+            '-H "Content-Type: application/json" '
+            '-d \'{"to":"boss@acme.com","subject":"Re: Q1 Report Needed","body":"..."}\' '
+            "confirming you will have the Q1 report ready by Friday."
         ),
         category=Category.API,
         difficulty=Difficulty.MEDIUM,
@@ -395,13 +408,17 @@ TASKS: list[Task] = [
         id="api-notes-organize",
         name="Organize Notes",
         instruction=(
-            "Use the LobsterGym API at http://lobstergym-api:8090 to: "
-            "1. List all existing notes. "
-            "2. Create a new note titled 'Meeting Notes - April 10' with "
-            "content summarizing the calendar events for April 10. "
-            "Tag it with 'meetings' and 'april'. "
-            "3. Update the existing 'Project Ideas' note to add "
-            "'4. LobsterGym evaluation framework' to the content."
+            "IMPORTANT: Do NOT use web_fetch — it will fail on internal hosts. "
+            "Use your exec tool to run curl commands instead. "
+            "1. List all notes: exec curl -s http://lobstergym-api:8090/notes "
+            "2. Create a new note: exec curl -s -X POST http://lobstergym-api:8090/notes "
+            "-H 'Content-Type: application/json' "
+            "-d '{\"title\":\"Meeting Notes - April 10\",\"content\":\"Summary of April 10 meetings\",\"tags\":[\"meetings\",\"april\"]}' "
+            "3. Update the existing 'Project Ideas' note (id note-001): "
+            "exec curl -s -X PATCH http://lobstergym-api:8090/notes/note-001 "
+            "-H 'Content-Type: application/json' "
+            "-d '{\"content\":\"... existing content ... 4. LobsterGym evaluation framework\"}' "
+            "Read the note first to get the existing content before updating."
         ),
         category=Category.API,
         difficulty=Difficulty.HARD,
@@ -461,10 +478,17 @@ TASKS: list[Task] = [
         id="multi-email-calendar-memory",
         name="Email Triage + Calendar + Memory",
         instruction=(
-            "1. Use the API at http://lobstergym-api:8090 to read all unread emails. "
-            "2. The email from boss@acme.com requires a meeting — schedule a "
-            '"Q1 Report Review" meeting for April 12 at 10:00 (60 min). '
-            "3. Reply to boss@acme.com confirming the meeting. "
+            "IMPORTANT: Do NOT use web_fetch — it will fail on internal hosts. "
+            "Use your exec tool to run curl commands instead. "
+            "1. Read all emails: exec curl -s http://lobstergym-api:8090/email/inbox "
+            "Then read each by id: exec curl -s http://lobstergym-api:8090/email/inbox/<id> "
+            "2. The email from boss@acme.com requires a meeting — schedule it: "
+            "exec curl -s -X POST http://lobstergym-api:8090/calendar/events "
+            '-H "Content-Type: application/json" '
+            '-d \'{"title":"Q1 Report Review","date":"2026-04-12","time":"10:00","duration_minutes":60}\' '
+            "3. Reply to boss confirming: exec curl -s -X POST http://lobstergym-api:8090/email/send "
+            '-H "Content-Type: application/json" '
+            '-d \'{"to":"boss@acme.com","subject":"Re: Q1 Report Needed","body":"Meeting scheduled for April 12 at 10am."}\' '
             "4. Use your ClawGraph memory skill to remember that "
             '"boss@acme.com requested the Q1 report, and a review meeting is scheduled for April 12".'
         ),

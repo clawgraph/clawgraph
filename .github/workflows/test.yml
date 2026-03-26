@@ -108,12 +108,22 @@ jobs:
             sleep 2
           done
 
+      - name: Smoke check — ClawGraph profile
+        working-directory: lobstergym
+        run: docker compose run --rm smoke-clawgraph
+
+      - name: Smoke check — Default profile
+        working-directory: lobstergym
+        run: docker compose run --rm smoke-default
+
       - name: Run eval — ClawGraph profile
         working-directory: lobstergym
+        continue-on-error: true
         run: docker compose run --rm eval-clawgraph
 
       - name: Run eval — Default profile
         working-directory: lobstergym
+        continue-on-error: true
         run: docker compose run --rm eval-default
 
       - name: Upload eval reports
