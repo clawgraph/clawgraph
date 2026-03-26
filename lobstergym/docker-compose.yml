@@ -78,6 +78,7 @@ services:
     command:
       - |
         echo '=== OpenClaw + ClawGraph Gateway ==='
+        echo "Chrome: $(google-chrome-stable --version 2>&1 || echo 'NOT FOUND')"
         mkdir -p /root/.openclaw/workspace/skills
         cp -r /workspace/skills/clawgraph /root/.openclaw/workspace/skills/
         pip install -e /workspace 2>/dev/null
@@ -181,6 +182,7 @@ services:
     command:
       - |
         echo '=== OpenClaw Default Gateway ==='
+        echo "Chrome: $(google-chrome-stable --version 2>&1 || echo 'NOT FOUND')"
         cat > /root/.openclaw/openclaw.json << CONF
         {
           "gateway": {
