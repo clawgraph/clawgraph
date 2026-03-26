@@ -120,8 +120,7 @@ services:
             "enabled": true,
             "headless": true,
             "noSandbox": true,
-            "executablePath": "/usr/bin/google-chrome-stable",
-            "ssrfPolicy": {
+            "executablePath": "/usr/bin/google-chrome-stable",            "launchArgs": ["--disable-gpu", "--disable-extensions", "--disable-dev-shm-usage"],            "ssrfPolicy": {
               "dangerouslyAllowPrivateNetwork": true
             }
           }
@@ -293,6 +292,7 @@ services:
             "headless": true,
             "noSandbox": true,
             "executablePath": "/usr/bin/google-chrome-stable",
+            "launchArgs": ["--disable-gpu", "--disable-extensions", "--disable-dev-shm-usage"],
             "ssrfPolicy": {
               "dangerouslyAllowPrivateNetwork": true
             }
@@ -368,6 +368,7 @@ services:
             "headless": true,
             "noSandbox": true,
             "executablePath": "/usr/bin/google-chrome-stable",
+            "launchArgs": ["--disable-gpu", "--disable-extensions", "--disable-dev-shm-usage"],
             "ssrfPolicy": {
               "dangerouslyAllowPrivateNetwork": true
             }
@@ -464,6 +465,7 @@ services:
             "headless": true,
             "noSandbox": true,
             "executablePath": "/usr/bin/google-chrome-stable",
+            "launchArgs": ["--disable-gpu", "--disable-extensions", "--disable-dev-shm-usage"],
             "ssrfPolicy": {
               "dangerouslyAllowPrivateNetwork": true
             }
@@ -539,6 +541,7 @@ services:
             "headless": true,
             "noSandbox": true,
             "executablePath": "/usr/bin/google-chrome-stable",
+            "launchArgs": ["--disable-gpu", "--disable-extensions", "--disable-dev-shm-usage"],
             "ssrfPolicy": {
               "dangerouslyAllowPrivateNetwork": true
             }

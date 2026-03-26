@@ -123,15 +123,15 @@ jobs:
         working-directory: lobstergym
         run: docker compose run --rm smoke-default
 
-      - name: Run eval — ClawGraph profile
+      - name: Run eval — both profiles in parallel
         working-directory: lobstergym
         continue-on-error: true
-        run: docker compose run --rm eval-clawgraph
-
-      - name: Run eval — Default profile
-        working-directory: lobstergym
-        continue-on-error: true
-        run: docker compose run --rm eval-default
+        run: |
+          docker compose run --rm eval-clawgraph &
+          PID_CG=$!
+          docker compose run --rm eval-default &
+          PID_DEF=$!
+          wait $PID_CG $PID_DEF
 
       - name: Upload eval reports
         uses: actions/upload-artifact@v4
