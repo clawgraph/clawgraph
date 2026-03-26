@@ -279,11 +279,21 @@ def send_task_to_agent(instruction: str) -> str:
     """
     try:
         result = subprocess.run(
-            ["openclaw", "agent", "--json", "--message", instruction],
+            [
+                "openclaw", "agent",
+                "--to", "+15555550199",
+                "--json",
+                "--message", instruction,
+            ],
             capture_output=True,
             text=True,
             timeout=TASK_TIMEOUT,
         )
+        # Diagnostic: show agent output for debugging
+        if result.stderr:
+            print(f"\n    [agent stderr] {result.stderr[:300]}", flush=True)
+        if result.returncode != 0:
+            print(f"\n    [agent exit={result.returncode}]", flush=True)
         return result.stdout or result.stderr or "(no output)"
     except subprocess.TimeoutExpired:
         return "(timeout)"
@@ -370,6 +380,10 @@ def run_task(task: Task) -> TaskResult:
             duration_seconds=duration,
             error=str(exc),
         )
+
+    # Diagnostic: dump full agent response for the first task
+    if os.getenv("LOBSTERGYM_DEBUG"):
+        print(f"\n    [agent response] {response[:500]}", flush=True)
 
     # Small delay for state to settle
     time.sleep(2)
