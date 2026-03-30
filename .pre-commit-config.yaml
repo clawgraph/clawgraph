@@ -1,0 +1,9 @@
+repos:
+  - repo: local
+    hooks:
+      - id: pip-audit
+        name: pip-audit
+        entry: pip-audit --strict --desc
+        language: system
+        pass_filenames: false
+        files: "(pyproject\\.toml|requirements\\.lock)$"

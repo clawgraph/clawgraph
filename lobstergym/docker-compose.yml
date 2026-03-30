@@ -64,7 +64,6 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENCLAW_GATEWAY_TOKEN=${OPENCLAW_GATEWAY_TOKEN:-lobstergym-dev-token}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
-      - LITELLM_LOCAL_MODEL_COST_MAP=True
     volumes:
       - ..:/workspace:cached
       - openclaw-clawgraph-home:/root/.openclaw
@@ -120,8 +119,7 @@ services:
             "enabled": true,
             "headless": true,
             "noSandbox": true,
-            "executablePath": "/usr/bin/google-chrome-stable",
-            "ssrfPolicy": {
+            "executablePath": "/usr/bin/google-chrome-stable",            "launchArgs": ["--disable-gpu", "--disable-extensions", "--disable-dev-shm-usage"],            "ssrfPolicy": {
               "dangerouslyAllowPrivateNetwork": true
             }
           }
@@ -168,7 +166,6 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENCLAW_GATEWAY_TOKEN=${OPENCLAW_GATEWAY_TOKEN:-lobstergym-dev-token}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
-      - LITELLM_LOCAL_MODEL_COST_MAP=True
     volumes:
       - ..:/workspace:cached
       - openclaw-default-home:/root/.openclaw
@@ -254,7 +251,6 @@ services:
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENCLAW_GATEWAY_TOKEN=${OPENCLAW_GATEWAY_TOKEN:-lobstergym-dev-token}
-      - LITELLM_LOCAL_MODEL_COST_MAP=True
     volumes:
       - ..:/workspace:cached
       - smoke-clawgraph-home:/root/.openclaw
@@ -293,6 +289,7 @@ services:
             "headless": true,
             "noSandbox": true,
             "executablePath": "/usr/bin/google-chrome-stable",
+            "launchArgs": ["--disable-gpu", "--disable-extensions", "--disable-dev-shm-usage"],
             "ssrfPolicy": {
               "dangerouslyAllowPrivateNetwork": true
             }
@@ -333,7 +330,6 @@ services:
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENCLAW_GATEWAY_TOKEN=${OPENCLAW_GATEWAY_TOKEN:-lobstergym-dev-token}
-      - LITELLM_LOCAL_MODEL_COST_MAP=True
     volumes:
       - ..:/workspace:cached
       - smoke-default-home:/root/.openclaw
@@ -368,6 +364,7 @@ services:
             "headless": true,
             "noSandbox": true,
             "executablePath": "/usr/bin/google-chrome-stable",
+            "launchArgs": ["--disable-gpu", "--disable-extensions", "--disable-dev-shm-usage"],
             "ssrfPolicy": {
               "dangerouslyAllowPrivateNetwork": true
             }
@@ -413,7 +410,6 @@ services:
       - LOBSTERGYM_WEB_BASE=http://lobstergym-web:8080
       - LOBSTERGYM_API_BASE=http://lobstergym-api:8090
       - LOBSTERGYM_DEBUG=1
-      - LITELLM_LOCAL_MODEL_COST_MAP=True
     volumes:
       - ..:/workspace:cached
       - eval-clawgraph-home:/root/.openclaw
@@ -464,6 +460,7 @@ services:
             "headless": true,
             "noSandbox": true,
             "executablePath": "/usr/bin/google-chrome-stable",
+            "launchArgs": ["--disable-gpu", "--disable-extensions", "--disable-dev-shm-usage"],
             "ssrfPolicy": {
               "dangerouslyAllowPrivateNetwork": true
             }
@@ -491,7 +488,6 @@ services:
       - LOBSTERGYM_WEB_BASE=http://lobstergym-web:8080
       - LOBSTERGYM_API_BASE=http://lobstergym-api:8090
       - LOBSTERGYM_DEBUG=1
-      - LITELLM_LOCAL_MODEL_COST_MAP=True
     volumes:
       - ..:/workspace:cached
       - eval-default-home:/root/.openclaw
@@ -539,6 +535,7 @@ services:
             "headless": true,
             "noSandbox": true,
             "executablePath": "/usr/bin/google-chrome-stable",
+            "launchArgs": ["--disable-gpu", "--disable-extensions", "--disable-dev-shm-usage"],
             "ssrfPolicy": {
               "dangerouslyAllowPrivateNetwork": true
             }

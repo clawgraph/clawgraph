@@ -6,8 +6,6 @@ services:
     build:
       context: ..
       dockerfile: .devcontainer/Dockerfile
-    environment:
-      - LITELLM_LOCAL_MODEL_COST_MAP=True
     volumes:
       - ..:/workspace:cached
       - clawgraph-data:/root/.clawgraph
@@ -27,7 +25,6 @@ services:
       dockerfile: .devcontainer/Dockerfile
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - LITELLM_LOCAL_MODEL_COST_MAP=True
     volumes:
       - ..:/workspace:cached
     working_dir: /workspace
