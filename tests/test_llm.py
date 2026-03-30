@@ -89,9 +89,9 @@ class TestGenerateCypher:
 
     @patch("clawgraph.llm._get_client")
     def test_raises_on_api_error(self, mock_get_client: MagicMock) -> None:
-        from clawgraph.llm import generate_cypher
-
         from openai import APIConnectionError
+
+        from clawgraph.llm import generate_cypher
 
         mock_client = MagicMock()
         mock_client.chat.completions.create.side_effect = APIConnectionError(request=MagicMock())
