@@ -34,7 +34,7 @@ WEB_BASE = os.getenv("LOBSTERGYM_WEB_BASE", "http://lobstergym-web:8080")
 API_BASE = os.getenv("LOBSTERGYM_API_BASE", "http://lobstergym-api:8090")
 
 # How long to wait for the agent to finish a task (seconds)
-TASK_TIMEOUT = 120
+TASK_TIMEOUT = 90
 # Pause between polling checks
 POLL_INTERVAL = 5
 

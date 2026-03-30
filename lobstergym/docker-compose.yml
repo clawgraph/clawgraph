@@ -64,7 +64,6 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENCLAW_GATEWAY_TOKEN=${OPENCLAW_GATEWAY_TOKEN:-lobstergym-dev-token}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
-      - LITELLM_LOCAL_MODEL_COST_MAP=True
     volumes:
       - ..:/workspace:cached
       - openclaw-clawgraph-home:/root/.openclaw
@@ -78,6 +77,7 @@ services:
     command:
       - |
         echo '=== OpenClaw + ClawGraph Gateway ==='
+        echo "Chrome: $(google-chrome-stable --version 2>&1 || echo 'NOT FOUND')"
         mkdir -p /root/.openclaw/workspace/skills
         cp -r /workspace/skills/clawgraph /root/.openclaw/workspace/skills/
         pip install -e /workspace 2>/dev/null
@@ -119,8 +119,7 @@ services:
             "enabled": true,
             "headless": true,
             "noSandbox": true,
-            "executablePath": "/usr/bin/google-chrome-stable",
-            "ssrfPolicy": {
+            "executablePath": "/usr/bin/google-chrome-stable",            "launchArgs": ["--disable-gpu", "--disable-extensions", "--disable-dev-shm-usage"],            "ssrfPolicy": {
               "dangerouslyAllowPrivateNetwork": true
             }
           }
@@ -167,7 +166,6 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENCLAW_GATEWAY_TOKEN=${OPENCLAW_GATEWAY_TOKEN:-lobstergym-dev-token}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
-      - LITELLM_LOCAL_MODEL_COST_MAP=True
     volumes:
       - ..:/workspace:cached
       - openclaw-default-home:/root/.openclaw
@@ -181,6 +179,7 @@ services:
     command:
       - |
         echo '=== OpenClaw Default Gateway ==='
+        echo "Chrome: $(google-chrome-stable --version 2>&1 || echo 'NOT FOUND')"
         cat > /root/.openclaw/openclaw.json << CONF
         {
           "gateway": {
@@ -252,7 +251,6 @@ services:
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENCLAW_GATEWAY_TOKEN=${OPENCLAW_GATEWAY_TOKEN:-lobstergym-dev-token}
-      - LITELLM_LOCAL_MODEL_COST_MAP=True
     volumes:
       - ..:/workspace:cached
       - smoke-clawgraph-home:/root/.openclaw
@@ -291,6 +289,7 @@ services:
             "headless": true,
             "noSandbox": true,
             "executablePath": "/usr/bin/google-chrome-stable",
+            "launchArgs": ["--disable-gpu", "--disable-extensions", "--disable-dev-shm-usage"],
             "ssrfPolicy": {
               "dangerouslyAllowPrivateNetwork": true
             }
@@ -331,7 +330,6 @@ services:
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENCLAW_GATEWAY_TOKEN=${OPENCLAW_GATEWAY_TOKEN:-lobstergym-dev-token}
-      - LITELLM_LOCAL_MODEL_COST_MAP=True
     volumes:
       - ..:/workspace:cached
       - smoke-default-home:/root/.openclaw
@@ -366,6 +364,7 @@ services:
             "headless": true,
             "noSandbox": true,
             "executablePath": "/usr/bin/google-chrome-stable",
+            "launchArgs": ["--disable-gpu", "--disable-extensions", "--disable-dev-shm-usage"],
             "ssrfPolicy": {
               "dangerouslyAllowPrivateNetwork": true
             }
@@ -411,7 +410,6 @@ services:
       - LOBSTERGYM_WEB_BASE=http://lobstergym-web:8080
       - LOBSTERGYM_API_BASE=http://lobstergym-api:8090
       - LOBSTERGYM_DEBUG=1
-      - LITELLM_LOCAL_MODEL_COST_MAP=True
     volumes:
       - ..:/workspace:cached
       - eval-clawgraph-home:/root/.openclaw
@@ -462,6 +460,7 @@ services:
             "headless": true,
             "noSandbox": true,
             "executablePath": "/usr/bin/google-chrome-stable",
+            "launchArgs": ["--disable-gpu", "--disable-extensions", "--disable-dev-shm-usage"],
             "ssrfPolicy": {
               "dangerouslyAllowPrivateNetwork": true
             }
@@ -489,7 +488,6 @@ services:
       - LOBSTERGYM_WEB_BASE=http://lobstergym-web:8080
       - LOBSTERGYM_API_BASE=http://lobstergym-api:8090
       - LOBSTERGYM_DEBUG=1
-      - LITELLM_LOCAL_MODEL_COST_MAP=True
     volumes:
       - ..:/workspace:cached
       - eval-default-home:/root/.openclaw
@@ -537,6 +535,7 @@ services:
             "headless": true,
             "noSandbox": true,
             "executablePath": "/usr/bin/google-chrome-stable",
+            "launchArgs": ["--disable-gpu", "--disable-extensions", "--disable-dev-shm-usage"],
             "ssrfPolicy": {
               "dangerouslyAllowPrivateNetwork": true
             }

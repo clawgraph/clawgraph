@@ -8,7 +8,7 @@ and stores graph-based memory in an embedded Kùzu database.
 ## Architecture
 
 - `src/clawgraph/cli.py` — CLI entry point using Typer
-- `src/clawgraph/llm.py` — LLM calls via LiteLLM
+- `src/clawgraph/llm.py` — LLM calls via OpenAI SDK
 - `src/clawgraph/cypher.py` — Cypher generation and validation
 - `src/clawgraph/ontology.py` — Schema/ontology tracking
 - `src/clawgraph/db.py` — Kùzu database wrapper
@@ -31,7 +31,7 @@ and stores graph-based memory in an embedded Kùzu database.
 
 - `typer` — CLI framework
 - `kuzu` — Embedded graph database
-- `litellm` — LLM provider abstraction
+- `openai` — OpenAI SDK (supports any OpenAI-compatible endpoint)
 - `pyyaml` — Config file parsing
 - `rich` — Terminal formatting
 
@@ -62,7 +62,7 @@ Do not add new dependencies without justification.
 ## Key Design Decisions
 
 - **Kùzu** over Neo4j — embedded, no server required, native Cypher
-- **LiteLLM** over direct SDKs — supports any LLM provider
+- **OpenAI SDK** — direct, minimal deps, supports any OpenAI-compatible endpoint via base_url
 - **Typer** over Click — less boilerplate, type-hint driven
 - **YAML** config over TOML — more human-readable for simple config
 - **Ontology persisted to JSON** — simple, portable, human-editable

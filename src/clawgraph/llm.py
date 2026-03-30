@@ -1,4 +1,8 @@
-"""LLM integration layer — generates Cypher from natural language."""
+"""LLM integration layer — generates Cypher from natural language.
+
+Uses the OpenAI SDK directly (supports any OpenAI-compatible endpoint
+via base_url config). Replaces the former litellm dependency.
+"""
 
 from __future__ import annotations
 
@@ -7,15 +11,16 @@ import os
 import re
 from typing import Any, cast
 
+from openai import OpenAI, OpenAIError
+
 from clawgraph.config import load_config
 
 
-def _ensure_env() -> None:
-    """Load .env file and set litellm env var for fast imports."""
-    os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
+def _load_dotenv() -> None:
+    """Load .env file from cwd if present.
 
-    # Load .env from project root or cwd if present
-    # .env values OVERRIDE system env vars so the project config wins
+    .env values OVERRIDE system env vars so the project config wins.
+    """
     env_path = os.path.join(os.getcwd(), ".env")
     if os.path.exists(env_path):
         with open(env_path) as f:
@@ -30,9 +35,34 @@ def _ensure_env() -> None:
                     os.environ[key] = val
 
 
-_ensure_env()
+_load_dotenv()
 
-import litellm  # noqa: E402 — must come after env setup
+
+def _get_client() -> OpenAI:
+    """Build an OpenAI client from config/env vars.
+
+    Supports any OpenAI-compatible API by setting base_url in config
+    or OPENAI_BASE_URL env var.
+
+    Returns:
+        Configured OpenAI client.
+
+    Raises:
+        LLMError: If no API key is found.
+    """
+    config = load_config()
+    llm_config: dict[str, Any] = config.get("llm", {})
+
+    api_key = os.environ.get("OPENAI_API_KEY") or llm_config.get("api_key")
+    base_url = os.environ.get("OPENAI_BASE_URL") or llm_config.get("base_url")
+
+    if not api_key:
+        raise LLMError(
+            "No API key found. Set OPENAI_API_KEY env var or "
+            "configure llm.api_key in ~/.clawgraph/config.yaml"
+        )
+
+    return OpenAI(api_key=api_key, base_url=base_url)
 
 
 def generate_cypher(
@@ -62,7 +92,8 @@ def generate_cypher(
     system_prompt = _build_write_prompt(ontology_context) if mode == "write" else _build_read_prompt(ontology_context)
 
     try:
-        response = litellm.completion(
+        client = _get_client()
+        response = client.chat.completions.create(
             model=model,
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -70,7 +101,7 @@ def generate_cypher(
             ],
             temperature=temperature,
         )
-    except Exception as e:
+    except OpenAIError as e:
         raise LLMError(f"LLM call failed: {e}") from e
 
     content: str | None = response.choices[0].message.content
@@ -123,7 +154,8 @@ def infer_ontology(
         system_prompt += f"Existing ontology:\n{existing_ontology}\n\n"
 
     try:
-        response = litellm.completion(
+        client = _get_client()
+        response = client.chat.completions.create(
             model=model,
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -131,7 +163,7 @@ def infer_ontology(
             ],
             temperature=0.0,
         )
-    except Exception as e:
+    except OpenAIError as e:
         raise LLMError(f"LLM call failed: {e}") from e
 
     content: str | None = response.choices[0].message.content
@@ -197,7 +229,8 @@ def infer_ontology_batch(
         system_prompt += f"Existing ontology:\n{existing_ontology}\n\n"
 
     try:
-        response = litellm.completion(
+        client = _get_client()
+        response = client.chat.completions.create(
             model=model,
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -205,7 +238,7 @@ def infer_ontology_batch(
             ],
             temperature=0.0,
         )
-    except Exception as e:
+    except OpenAIError as e:
         raise LLMError(f"LLM call failed: {e}") from e
 
     content: str | None = response.choices[0].message.content

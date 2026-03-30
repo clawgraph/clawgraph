@@ -21,8 +21,7 @@
     "postStartCommand": "echo '✅ ClawGraph Codespace ready. Run: cd lobstergym && docker compose up -d'",
     "remoteEnv": {
         "OPENAI_API_KEY": "${localEnv:OPENAI_API_KEY}",
-        "ANTHROPIC_API_KEY": "${localEnv:ANTHROPIC_API_KEY}",
-        "LITELLM_LOCAL_MODEL_COST_MAP": "True"
+        "ANTHROPIC_API_KEY": "${localEnv:ANTHROPIC_API_KEY}"
     },
     "customizations": {
         "vscode": {

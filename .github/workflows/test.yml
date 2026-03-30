@@ -11,6 +11,10 @@ on:
         description: "Run LobsterGym eval pipeline"
         type: boolean
         default: false
+      skip_tests:
+        description: "Skip unit tests (lint, type-check, pytest)"
+        type: boolean
+        default: false
   schedule:
     # Nightly eval at 06:00 UTC (midnight US Central / 4pm AEST)
     - cron: "0 6 * * *"
@@ -23,6 +27,7 @@ jobs:
   # Unit tests — fast, no Docker, no API keys
   # ---------------------------------------------------------------
   test:
+    if: ${{ !(github.event_name == 'workflow_dispatch' && github.event.inputs.skip_tests == 'true') }}
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -55,6 +60,7 @@ jobs:
   # LobsterGym — build mock containers & validate they start
   # ---------------------------------------------------------------
   lobstergym-build:
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     needs: test
     steps:
@@ -86,10 +92,11 @@ jobs:
   # ---------------------------------------------------------------
   lobstergym-eval:
     runs-on: ubuntu-latest
-    if: >-
-      github.event_name == 'schedule' ||
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.run_eval == 'true')
     needs: lobstergym-build
+    if: >-
+      (github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.run_eval == 'true'))
+      && !cancelled()
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
     steps:
@@ -116,15 +123,15 @@ jobs:
         working-directory: lobstergym
         run: docker compose run --rm smoke-default
 
-      - name: Run eval — ClawGraph profile
+      - name: Run eval — both profiles in parallel
         working-directory: lobstergym
         continue-on-error: true
-        run: docker compose run --rm eval-clawgraph
-
-      - name: Run eval — Default profile
-        working-directory: lobstergym
-        continue-on-error: true
-        run: docker compose run --rm eval-default
+        run: |
+          docker compose run --rm eval-clawgraph &
+          PID_CG=$!
+          docker compose run --rm eval-default &
+          PID_DEF=$!
+          wait $PID_CG $PID_DEF
 
       - name: Upload eval reports
         uses: actions/upload-artifact@v4
