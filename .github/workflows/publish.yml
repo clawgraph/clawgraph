@@ -7,6 +7,7 @@ on:
 permissions:
   id-token: write
   contents: read
+  attestations: write
 
 jobs:
   publish:
@@ -28,3 +29,5 @@ jobs:
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          attestations: true
