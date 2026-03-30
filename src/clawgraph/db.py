@@ -126,10 +126,12 @@ class GraphDB:
         )
         self.create_rel_table(
             "Relates", "Entity", "Entity",
-            {"type": "STRING", "created_at": "STRING"},
+            {"type": "STRING", "created_at": "STRING",
+             "source_agent": "STRING", "source_session": "STRING",
+             "source_input": "STRING"},
         )
-        # Migrate existing DBs: add timestamp columns if missing
-        self._migrate_timestamps()
+        # Migrate existing DBs: add missing columns
+        self._migrate_schema()
 
     def get_all_entities(self) -> list[dict[str, Any]]:
         """Get all entities in the graph."""
@@ -138,11 +140,13 @@ class GraphDB:
         return self.execute("MATCH (e:Entity) RETURN e.name, e.label")
 
     def get_all_relationships(self) -> list[dict[str, Any]]:
-        """Get all relationships in the graph."""
+        """Get all relationships in the graph, including provenance metadata."""
         if not self.has_rel_table("Relates"):
             return []
         return self.execute(
-            "MATCH (a:Entity)-[r:Relates]->(b:Entity) RETURN a.name, r.type, b.name"
+            "MATCH (a:Entity)-[r:Relates]->(b:Entity) "
+            "RETURN a.name, r.type, b.name, "
+            "r.source_agent, r.source_session, r.source_input"
         )
 
     def close(self) -> None:
@@ -240,17 +244,20 @@ class GraphDB:
         db_path = target / top_dir
         return cls(db_path=str(db_path))
 
-    def _migrate_timestamps(self) -> None:
-        """Add timestamp columns to existing tables that lack them.
+    def _migrate_schema(self) -> None:
+        """Add missing columns to existing tables.
 
         This is a no-op for new databases. For databases created before
-        timestamps were added, it attempts to ALTER TABLE to add the
-        columns. Failures are silently ignored (column may already exist).
+        new columns were added, it attempts to ALTER TABLE to add them.
+        Failures are silently ignored (column may already exist).
         """
         migrations = [
             "ALTER TABLE Entity ADD created_at STRING DEFAULT ''",
             "ALTER TABLE Entity ADD updated_at STRING DEFAULT ''",
             "ALTER TABLE Relates ADD created_at STRING DEFAULT ''",
+            "ALTER TABLE Relates ADD source_agent STRING DEFAULT ''",
+            "ALTER TABLE Relates ADD source_session STRING DEFAULT ''",
+            "ALTER TABLE Relates ADD source_input STRING DEFAULT ''",
         ]
         for stmt in migrations:
             try:

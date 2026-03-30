@@ -109,11 +109,13 @@ class Memory:
         if init_facts:
             self.add_batch(init_facts)
 
-    def add(self, statement: str) -> AddResult:
+    def add(self, statement: str, source: dict[str, str] | None = None) -> AddResult:
         """Add a single fact to graph memory.
 
         Args:
             statement: Natural language statement (e.g., "John works at Acme").
+            source: Optional provenance metadata dict with keys
+                    'agent', 'session', 'input'.
 
         Returns:
             AddResult with entities, relationships, and execution status.
@@ -127,9 +129,9 @@ class Memory:
         entities = inferred.get("entities", [])
         relationships = inferred.get("relationships", [])
 
-        return self._execute_inferred(entities, relationships)
+        return self._execute_inferred(entities, relationships, source=source)
 
-    def add_batch(self, statements: list[str]) -> AddResult:
+    def add_batch(self, statements: list[str], source: dict[str, str] | None = None) -> AddResult:
         """Add multiple facts in a single LLM call.
 
         This is significantly faster than calling add() in a loop
@@ -137,6 +139,8 @@ class Memory:
 
         Args:
             statements: List of natural language statements.
+            source: Optional provenance metadata dict with keys
+                    'agent', 'session', 'input'.
 
         Returns:
             Combined AddResult for all statements.
@@ -153,17 +157,28 @@ class Memory:
         entities = inferred.get("entities", [])
         relationships = inferred.get("relationships", [])
 
-        return self._execute_inferred(entities, relationships)
+        return self._execute_inferred(entities, relationships, source=source)
 
-    def query(self, question: str) -> list[dict[str, Any]]:
+    def query(self, question: str, source_agent: str | None = None) -> list[dict[str, Any]]:
         """Query graph memory with natural language.
 
         Args:
             question: Natural language question.
+            source_agent: Optional filter to only include relationships
+                          from this source agent.
 
         Returns:
             List of result rows as dictionaries.
         """
+        if source_agent is not None:
+            return self._db.execute(
+                "MATCH (a:Entity)-[r:Relates]->(b:Entity) "
+                "WHERE r.source_agent = $agent "
+                "RETURN a.name, r.type, b.name, "
+                "r.source_agent, r.source_session, r.source_input",
+                parameters={"agent": source_agent},
+            )
+
         raw_cypher = generate_cypher(
             question,
             ontology_context=self._ontology.to_context_string(),
@@ -241,9 +256,10 @@ class Memory:
         self,
         entities: list[dict[str, str]],
         relationships: list[dict[str, str]],
+        source: dict[str, str] | None = None,
     ) -> AddResult:
         """Execute inferred entities/relationships against the DB."""
-        cypher = build_merge_cypher(entities, relationships)
+        cypher = build_merge_cypher(entities, relationships, source=source)
 
         executed: list[str] = []
         errors: list[str] = []
