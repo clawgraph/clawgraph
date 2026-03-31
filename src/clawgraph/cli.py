@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -10,6 +11,7 @@ from typing import Any
 import typer
 from rich.console import Console
 from rich.panel import Panel
+from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
 from clawgraph import __version__
@@ -295,6 +297,116 @@ def ontology(
         console.print("[dim]No ontology defined yet.[/dim]")
     else:
         out_console.print(Panel(context, title="Ontology", border_style="blue"))
+
+
+@app.command("import")
+def import_facts(
+    path: str = typer.Argument(..., help="File path to import, or '-' for stdin."),
+    output: OutputFormat = typer.Option(
+        OutputFormat.human, "--output", "-o", help="Output format."
+    ),
+    model: str | None = typer.Option(
+        None, "--model", "-m", help="Override LLM model."
+    ),
+) -> None:
+    """Import facts from a file or stdin (batch add).
+
+    Supports plain text (one fact per line) or JSON (array of strings).
+    Format is auto-detected from file extension or content.
+    """
+    from clawgraph.memory import Memory
+
+    # Read input
+    if path == "-":
+        raw = sys.stdin.read()
+    else:
+        file_path = Path(path)
+        if not file_path.exists():
+            console.print(f"[bold red]Error:[/bold red] File not found: {path}")
+            raise typer.Exit(1)
+        raw = file_path.read_text(encoding="utf-8")
+
+    if not raw.strip():
+        console.print("[yellow]No facts found in input.[/yellow]")
+        raise typer.Exit(1)
+
+    # Parse facts: auto-detect format
+    statements = _parse_import_input(raw, path)
+
+    if not statements:
+        console.print("[yellow]No facts found in input.[/yellow]")
+        raise typer.Exit(1)
+
+    console.print(f"[bold blue]Importing {len(statements)} facts...[/bold blue]")
+
+    # Process with progress bar
+    try:
+        mem = Memory(model=model)
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            progress.add_task(
+                f"Processing {len(statements)} facts...", total=None
+            )
+            result = mem.add_batch(statements)
+    except Exception as e:
+        console.print(f"[bold red]Error:[/bold red] {e}")
+        raise typer.Exit(1)
+
+    if output == OutputFormat.human:
+        console.print(f"[dim]  Entities: {len(result.entities)}[/dim]")
+        console.print(f"[dim]  Relationships: {len(result.relationships)}[/dim]")
+        console.print(f"[dim]  Executed: {result.executed} statements[/dim]")
+        if result.ok:
+            console.print("[bold green]Done![/bold green]")
+        else:
+            console.print(
+                f"[bold yellow]Completed with {len(result.errors)} error(s)[/bold yellow]"
+            )
+    else:
+        _output(
+            {
+                "imported": len(statements),
+                **result.to_dict(),
+            },
+            output,
+        )
+
+
+def _parse_import_input(raw: str, path: str) -> list[str]:
+    """Parse import input, auto-detecting format.
+
+    Args:
+        raw: Raw file/stdin content.
+        path: File path (used for extension detection) or '-' for stdin.
+
+    Returns:
+        List of fact strings.
+    """
+    stripped = raw.strip()
+
+    # Check if JSON based on file extension or content
+    is_json = False
+    if path != "-" and Path(path).suffix.lower() == ".json":
+        is_json = True
+    elif stripped.startswith("["):
+        is_json = True
+
+    if is_json:
+        try:
+            data = json.loads(stripped)
+        except json.JSONDecodeError as e:
+            console.print(f"[bold red]JSON parse error:[/bold red] {e}")
+            raise typer.Exit(1)
+        if not isinstance(data, list):
+            console.print("[bold red]Error:[/bold red] JSON must be an array of strings.")
+            raise typer.Exit(1)
+        return [str(item) for item in data if str(item).strip()]
+
+    # Plain text: one fact per line
+    return [line.strip() for line in stripped.splitlines() if line.strip()]
 
 
 @app.command()
