@@ -35,7 +35,7 @@ jobs:
         run: pip install -e .
 
       - name: pip-audit — check for known vulnerabilities
-        run: pip-audit --strict --desc
+        run: pip-audit --strict --desc --skip-editable
 
       - name: Alert on failure
         if: failure()
