@@ -190,11 +190,9 @@ class GraphDB:
             canonical_name: The entity's primary key name.
             aliases: Pipe-separated string of alias names.
         """
-        safe_name = canonical_name.replace("'", "\\'")
-        safe_aliases = aliases.replace("'", "\\'")
         self.execute(
-            f"MATCH (e:Entity {{name: '{safe_name}'}}) "
-            f"SET e.aliases = '{safe_aliases}'"
+            "MATCH (e:Entity {name: $name}) SET e.aliases = $aliases",
+            {"name": canonical_name, "aliases": aliases},
         )
 
     def get_all_relationships(self) -> list[dict[str, Any]]:

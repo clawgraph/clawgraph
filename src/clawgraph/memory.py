@@ -316,6 +316,8 @@ class Memory:
         """
         # Map incoming name → canonical name
         name_map: dict[str, str] = {}
+        # Fast lookup: normalized form → canonical name (avoids re-normalizing)
+        norm_to_canonical: dict[str, str] = {}
         resolved_entities: list[dict[str, str]] = []
         seen_canonical: set[str] = set()
 
@@ -324,17 +326,11 @@ class Memory:
             normalized = _normalize_name(incoming_name)
 
             # Check if we already resolved this normalized name in this batch
-            already_resolved = False
-            for prev_name, canonical in name_map.items():
-                if _normalize_name(prev_name) == normalized:
-                    # Duplicate within the same batch — reuse canonical
-                    name_map[incoming_name] = canonical
-                    # Record incoming as alias
-                    self._record_alias(canonical, incoming_name)
-                    already_resolved = True
-                    break
-
-            if already_resolved:
+            if normalized in norm_to_canonical:
+                canonical = norm_to_canonical[normalized]
+                name_map[incoming_name] = canonical
+                # Record incoming as alias
+                self._record_alias(canonical, incoming_name)
                 continue
 
             # Check against existing entities in the DB
@@ -342,6 +338,7 @@ class Memory:
             if existing is not None:
                 canonical = existing.get("e.name", incoming_name)
                 name_map[incoming_name] = canonical
+                norm_to_canonical[normalized] = canonical
                 if canonical not in seen_canonical:
                     # Keep the canonical entity in our resolved list
                     resolved_entity = dict(entity)
@@ -350,9 +347,13 @@ class Memory:
                     seen_canonical.add(canonical)
                 # Record incoming as alias if different from canonical
                 if incoming_name != canonical:
-                    self._record_alias(canonical, incoming_name)
+                    current_aliases = existing.get("e.aliases", "") or ""
+                    self._record_alias(
+                        canonical, incoming_name, current_aliases=current_aliases
+                    )
             else:
                 name_map[incoming_name] = incoming_name
+                norm_to_canonical[normalized] = incoming_name
                 if incoming_name not in seen_canonical:
                     resolved_entities.append(dict(entity))
                     seen_canonical.add(incoming_name)
@@ -367,23 +368,29 @@ class Memory:
 
         return resolved_entities, resolved_relationships
 
-    def _record_alias(self, canonical_name: str, alias: str) -> None:
+    def _record_alias(
+        self,
+        canonical_name: str,
+        alias: str,
+        current_aliases: str | None = None,
+    ) -> None:
         """Add an alias to an entity if it's not already recorded.
 
         Args:
             canonical_name: The entity's primary key name.
             alias: The alias variant to record.
+            current_aliases: If provided, skip the DB lookup for existing
+                aliases and use this value instead.
         """
         if alias == canonical_name:
             return
-        existing = self._db.find_entity_by_normalized_name(
-            _normalize_name(canonical_name)
-        )
-        current_aliases_str: str = ""
-        if existing:
-            current_aliases_str = existing.get("e.aliases", "") or ""
+        if current_aliases is None:
+            existing = self._db.find_entity_by_normalized_name(
+                _normalize_name(canonical_name)
+            )
+            current_aliases = (existing.get("e.aliases", "") or "") if existing else ""
 
-        alias_set = {a for a in current_aliases_str.split("|") if a}
+        alias_set = {a for a in current_aliases.split("|") if a}
         alias_set.add(alias)
         self._db.update_entity_aliases(canonical_name, "|".join(sorted(alias_set)))
 
