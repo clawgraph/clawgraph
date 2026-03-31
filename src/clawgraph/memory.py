@@ -416,33 +416,36 @@ class Memory:
         """Retrieve the graph neighbourhood of an entity.
 
         Fetches the entity itself plus all entities and relationships
-        reachable within *hops* traversal steps.
+        reachable within *hops* traversal steps.  Uses parameterized
+        queries to prevent Cypher injection.
         """
-        safe_name = entity_name.replace("'", "\\'")
+        params = {"name": entity_name}
 
         # Start with the entity itself.
         entity_rows = self._db.execute(
-            f"MATCH (e:Entity {{name: '{safe_name}'}}) "
-            f"RETURN e.name, e.label"
+            "MATCH (e:Entity {name: $name}) RETURN e.name, e.label",
+            parameters=params,
         )
 
         # 1-hop neighbourhood.
         hop1 = self._db.execute(
-            f"MATCH (a:Entity {{name: '{safe_name}'}})-[r:Relates]-(b:Entity) "
-            f"RETURN a.name, r.type, b.name"
+            "MATCH (a:Entity {name: $name})-[r:Relates]-(b:Entity) "
+            "RETURN a.name, r.type, b.name",
+            parameters=params,
         )
 
         # 2-hop neighbourhood (only when hops >= 2 and 1-hop found results).
         hop2: list[dict[str, Any]] = []
         if hops >= 2 and hop1:
             hop2 = self._db.execute(
-                f"MATCH (a:Entity {{name: '{safe_name}'}})"
-                f"-[r1:Relates]-(mid:Entity)"
-                f"-[r2:Relates]-(b:Entity) "
-                f"WHERE b.name <> '{safe_name}' "
-                f"RETURN a.name AS `a.name`, r1.type AS `r1.type`, "
-                f"mid.name AS `mid.name`, r2.type AS `r2.type`, "
-                f"b.name AS `b.name`"
+                "MATCH (a:Entity {name: $name})"
+                "-[r1:Relates]-(mid:Entity)"
+                "-[r2:Relates]-(b:Entity) "
+                "WHERE b.name <> $name "
+                "RETURN a.name AS `a.name`, r1.type AS `r1.type`, "
+                "mid.name AS `mid.name`, r2.type AS `r2.type`, "
+                "b.name AS `b.name`",
+                parameters=params,
             )
 
         return entity_rows + hop1 + hop2

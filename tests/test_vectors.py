@@ -13,6 +13,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
+from clawgraph.memory import Memory
 from clawgraph.vectors import VectorIndex, get_embeddings
 
 # ---------------------------------------------------------------------------
@@ -411,8 +412,3 @@ class TestMemoryVectorsPersistence:
         assert vec_dir.exists()
         assert (vec_dir / "vector_names.json").exists()
         assert (vec_dir / "vector_data.npy").exists()
-
-
-# Required import — placed at the end so that the mocks above are defined
-# before the class using them.
-from clawgraph.memory import Memory  # noqa: E402
