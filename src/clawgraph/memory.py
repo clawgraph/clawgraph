@@ -240,7 +240,7 @@ class Memory:
     def _execute_inferred(
         self,
         entities: list[dict[str, str]],
-        relationships: list[dict[str, str]],
+        relationships: list[dict[str, Any]],
     ) -> AddResult:
         """Execute inferred entities/relationships against the DB."""
         cypher = build_merge_cypher(entities, relationships)
@@ -300,7 +300,7 @@ class AddResult:
     def __init__(
         self,
         entities: list[dict[str, str]],
-        relationships: list[dict[str, str]],
+        relationships: list[dict[str, Any]],
         executed: int,
         errors: list[str],
     ) -> None:

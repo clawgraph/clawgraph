@@ -137,8 +137,14 @@ def infer_ontology(
         "Given a natural language statement, extract entities and relationships.\n\n"
         "IMPORTANT: We use a GENERIC schema:\n"
         "  - All entities are stored as Entity nodes with properties: name (STRING, PK), label (STRING)\n"
-        "  - All relationships use Relates with property: type (STRING)\n\n"
-        "Extract the entities and relationship from the statement.\n"
+        "  - All relationships use Relates with properties: type (STRING), properties (STRING, JSON)\n\n"
+        "Extract the entities and relationships from the statement.\n"
+        "For relationships, also extract any qualifying properties such as:\n"
+        "  - Temporal info (from/to dates, since, until)\n"
+        "  - Roles or titles held during the relationship\n"
+        "  - Strength or confidence (0.0 to 1.0)\n"
+        "  - Any other metadata that qualifies the relationship\n"
+        "If no properties are present, use an empty object {}.\n"
         "If ALLOWED labels or relationship types are specified below, you MUST only use those.\n"
         "Respond with ONLY valid JSON (no markdown fences):\n"
         "{\n"
@@ -146,7 +152,8 @@ def infer_ontology(
         '    {"name": "actual name", "label": "Person|Organization|Place|etc"}\n'
         "  ],\n"
         '  "relationships": [\n'
-        '    {"from": "entity name", "to": "entity name", "type": "WORKS_AT|KNOWS|etc"}\n'
+        '    {"from": "entity name", "to": "entity name", "type": "WORKS_AT|KNOWS|etc", '
+        '"properties": {"from": "2020", "to": "2024", "role": "CEO"}}\n'
         "  ]\n"
         "}\n\n"
     )
@@ -212,8 +219,14 @@ def infer_ontology_batch(
         "Given MULTIPLE natural language statements, extract ALL entities and relationships.\n\n"
         "IMPORTANT: We use a GENERIC schema:\n"
         "  - All entities are stored as Entity nodes with properties: name (STRING, PK), label (STRING)\n"
-        "  - All relationships use Relates with property: type (STRING)\n\n"
+        "  - All relationships use Relates with properties: type (STRING), properties (STRING, JSON)\n\n"
         "Deduplicate entities — if the same entity appears in multiple statements, include it only once.\n"
+        "For relationships, also extract any qualifying properties such as:\n"
+        "  - Temporal info (from/to dates, since, until)\n"
+        "  - Roles or titles held during the relationship\n"
+        "  - Strength or confidence (0.0 to 1.0)\n"
+        "  - Any other metadata that qualifies the relationship\n"
+        "If no properties are present, use an empty object {}.\n"
         "If ALLOWED labels or relationship types are specified below, you MUST only use those.\n"
         "Respond with ONLY valid JSON (no markdown fences):\n"
         "{\n"
@@ -221,7 +234,8 @@ def infer_ontology_batch(
         '    {"name": "actual name", "label": "Person|Organization|Place|etc"}\n'
         "  ],\n"
         '  "relationships": [\n'
-        '    {"from": "entity name", "to": "entity name", "type": "WORKS_AT|KNOWS|etc"}\n'
+        '    {"from": "entity name", "to": "entity name", "type": "WORKS_AT|KNOWS|etc", '
+        '"properties": {"from": "2020", "to": "2024", "role": "CEO"}}\n'
         "  ]\n"
         "}\n\n"
     )
@@ -255,7 +269,7 @@ def infer_ontology_batch(
         raise LLMError(f"Failed to parse batch ontology response: {e}\nRaw: {cleaned}") from e
 
 
-def build_merge_cypher(entities: list[dict[str, str]], relationships: list[dict[str, str]]) -> str:
+def build_merge_cypher(entities: list[dict[str, str]], relationships: list[dict[str, Any]]) -> str:
     """Build MERGE Cypher statements from extracted entities and relationships.
 
     This generates Kùzu-compatible MERGE queries using the generic
@@ -263,7 +277,8 @@ def build_merge_cypher(entities: list[dict[str, str]], relationships: list[dict[
 
     Args:
         entities: List of dicts with 'name' and 'label'.
-        relationships: List of dicts with 'from', 'to', and 'type'.
+        relationships: List of dicts with 'from', 'to', 'type', and
+            optional 'properties' (dict or JSON string).
 
     Returns:
         Multi-line Cypher string with MERGE statements.
@@ -285,9 +300,22 @@ def build_merge_cypher(entities: list[dict[str, str]], relationships: list[dict[
         from_name = rel["from"].replace("'", "\\'")
         to_name = rel["to"].replace("'", "\\'")
         rel_type = rel.get("type", "RELATED_TO").replace("'", "\\'")
+        # Serialize relationship properties as JSON string; default to '{}'
+        raw_props: Any = rel.get("properties") or {}
+        if isinstance(raw_props, str):
+            # Already a JSON string — validate or default
+            try:
+                json.loads(raw_props)
+                props_json = raw_props
+            except (json.JSONDecodeError, ValueError):
+                props_json = "{}"
+        else:
+            props_json = json.dumps(raw_props, ensure_ascii=False)
+        escaped_props = props_json.replace("'", "\\'")
         lines.append(
             f"MATCH (a:Entity {{name: '{from_name}'}}), (b:Entity {{name: '{to_name}'}}) "
-            f"MERGE (a)-[r:Relates {{type: '{rel_type}'}}]->(b);"
+            f"MERGE (a)-[r:Relates {{type: '{rel_type}'}}]->(b) "
+            f"SET r.properties = '{escaped_props}';"
         )
 
     return "\n".join(lines)
@@ -304,11 +332,13 @@ def _build_write_prompt(ontology_context: str) -> str:
         "- Use MERGE instead of CREATE to prevent duplicates\n"
         "- The database uses a GENERIC schema:\n"
         "  - Entity nodes: Entity(name STRING PRIMARY KEY, label STRING)\n"
-        "  - Relationships: Relates(FROM Entity TO Entity, type STRING)\n"
+        "  - Relationships: Relates(FROM Entity TO Entity, type STRING, properties STRING)\n"
+        "  - The properties column stores a JSON string with qualifying metadata\n"
         "- For entities: MERGE (e:Entity {name: 'Name'}) SET e.label = 'Type'\n"
         "- For relationships: First MATCH both entities, then MERGE the relationship\n"
         "  MATCH (a:Entity {name: 'A'}), (b:Entity {name: 'B'}) "
-        "MERGE (a)-[r:Relates {type: 'REL_TYPE'}]->(b)\n"
+        "MERGE (a)-[r:Relates {type: 'REL_TYPE'}]->(b) "
+        """SET r.properties = '{"from": "2020", "to": "2024"}'\n"""
         "- Each statement should be on its own line ending with ;\n"
         "- Do NOT use CREATE NODE TABLE or CREATE REL TABLE\n"
         "- Do NOT use parameters ($param) — use literal string values\n\n"
@@ -328,13 +358,14 @@ def _build_read_prompt(ontology_context: str) -> str:
         "- Output ONLY the Cypher query, no explanation or markdown fences\n"
         "- The database uses a GENERIC schema:\n"
         "  - Entity nodes: Entity(name STRING PRIMARY KEY, label STRING)\n"
-        "  - Relationships: Relates(FROM Entity TO Entity, type STRING)\n"
+        "  - Relationships: Relates(FROM Entity TO Entity, type STRING, properties STRING)\n"
+        "  - The properties column stores a JSON string with qualifying metadata\n"
         "- Use MATCH and RETURN\n"
         "- For finding entities: MATCH (e:Entity {label: 'Type'}) RETURN e.name, e.label\n"
         "- For finding relationships: MATCH (a:Entity)-[r:Relates]->(b:Entity) "
-        "WHERE r.type = 'REL_TYPE' RETURN a.name, r.type, b.name\n"
+        "WHERE r.type = 'REL_TYPE' RETURN a.name, r.type, b.name, r.properties\n"
         "- For general queries: MATCH (a:Entity)-[r:Relates]->(b:Entity) "
-        "RETURN a.name, r.type, b.name\n"
+        "RETURN a.name, r.type, b.name, r.properties\n"
         "- Do NOT use parameters ($param) — use literal string values\n"
         "- Output a single query only, no semicolons\n\n"
     )
