@@ -30,12 +30,19 @@ Usage::
 
     # Config injection — bypass config files entirely
     mem = Memory(config={"llm": {"model": "gpt-4o"}, "db": {"path": ":memory:"}})
+
+    # Hybrid retrieval — enable vector fallback for fuzzy matching
+    mem = Memory(enable_vectors=True)
+    mem.add("Alice works at Acme Corp")
+    # If Cypher returns no results, falls back to vector similarity search
+    mem.query("Tell me about the company Acme Corp")
 """
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from clawgraph.cypher import sanitize_cypher, validate_cypher
 from clawgraph.db import GraphDB
@@ -47,6 +54,11 @@ from clawgraph.llm import (
     infer_ontology_batch,
 )
 from clawgraph.ontology import Ontology
+
+if TYPE_CHECKING:
+    from clawgraph.vectors import VectorIndex
+
+log = logging.getLogger(__name__)
 
 
 class Memory:
@@ -66,6 +78,7 @@ class Memory:
         ontology: Ontology | None = None,
         init_facts: list[str] | None = None,
         config: dict[str, Any] | None = None,
+        enable_vectors: bool = False,
     ) -> None:
         """Initialize the memory layer.
 
@@ -85,6 +98,13 @@ class Memory:
             config: Dict to override config-file values. Supports
                     keys like ``{"llm": {"model": "..."}, "db": {"path": "..."}}``.
                     Explicit ``db_path`` / ``model`` params take priority.
+            enable_vectors: Enable vector embeddings for hybrid retrieval.
+                            When ``True``, entity names are embedded and
+                            stored in a vector index.  If a Cypher query
+                            returns no results, the system falls back to
+                            cosine-similarity search and traverses the
+                            graph neighbourhood of matching entities.
+                            Requires numpy: ``pip install clawgraph[vectors]``
         """
         # Apply config dict if provided
         if config:
@@ -104,6 +124,12 @@ class Memory:
                 allowed_relationship_types=allowed_relationship_types,
             )
         self._model = model
+
+        # Vector support (optional — requires numpy)
+        self._vectors_enabled = enable_vectors
+        self._vector_index: VectorIndex | None = None
+        if enable_vectors:
+            self._init_vectors()
 
         # Seed initial facts (idempotent via MERGE)
         if init_facts:
@@ -127,7 +153,10 @@ class Memory:
         entities = inferred.get("entities", [])
         relationships = inferred.get("relationships", [])
 
-        return self._execute_inferred(entities, relationships)
+        result = self._execute_inferred(entities, relationships)
+        if self._vectors_enabled:
+            self._store_embeddings(entities)
+        return result
 
     def add_batch(self, statements: list[str]) -> AddResult:
         """Add multiple facts in a single LLM call.
@@ -153,10 +182,18 @@ class Memory:
         entities = inferred.get("entities", [])
         relationships = inferred.get("relationships", [])
 
-        return self._execute_inferred(entities, relationships)
+        result = self._execute_inferred(entities, relationships)
+        if self._vectors_enabled:
+            self._store_embeddings(entities)
+        return result
 
     def query(self, question: str) -> list[dict[str, Any]]:
         """Query graph memory with natural language.
+
+        When ``enable_vectors=True`` and the Cypher query returns no
+        results, the system falls back to vector similarity search over
+        entity names and then traverses the graph neighbourhood of
+        matching entities (1-2 hops).
 
         Args:
             question: Natural language question.
@@ -177,7 +214,12 @@ class Memory:
         if not validation:
             raise LLMError(f"Generated invalid Cypher: {validation.errors}")
 
-        return self._db.execute(cypher)
+        results = self._db.execute(cypher)
+
+        if not results and self._vectors_enabled:
+            results = self._vector_fallback(question)
+
+        return results
 
     def entities(self) -> list[dict[str, Any]]:
         """Get all entities in the graph."""
@@ -292,6 +334,118 @@ class Memory:
             if entity.get("name") == name:
                 return entity.get("label", "Unknown")
         return "Unknown"
+
+    # -- vector helpers -----------------------------------------------------
+
+    def _init_vectors(self) -> None:
+        """Initialize the vector index (called when ``enable_vectors=True``)."""
+        try:
+            from clawgraph.vectors import VectorIndex
+        except ImportError:
+            raise ImportError(
+                "Vector support requires numpy. "
+                "Install it with:  pip install clawgraph[vectors]"
+            ) from None
+
+        persist_dir: str | None = None
+        db_path_str = self._db.db_path
+        if db_path_str != ":memory:":
+            persist_dir = str(Path(db_path_str).parent / "vectors")
+
+        self._vector_index = VectorIndex(persist_dir=persist_dir)
+
+    def _store_embeddings(self, entities: list[dict[str, str]]) -> None:
+        """Compute and store embeddings for entity names."""
+        if self._vector_index is None:
+            return
+
+        from clawgraph.vectors import get_embeddings
+
+        names = [e["name"] for e in entities if "name" in e]
+        if not names:
+            return
+
+        try:
+            embeddings = get_embeddings(names)
+        except Exception:
+            log.debug("Failed to compute embeddings — skipping vector store")
+            return
+
+        for name, emb in zip(names, embeddings):
+            self._vector_index.add(name, emb)
+        self._vector_index.save()
+
+    def _vector_fallback(self, question: str) -> list[dict[str, Any]]:
+        """Fall back to vector similarity search when Cypher yields nothing.
+
+        Embeds the *question*, searches the vector index for the closest
+        entity names, then traverses 1-2 hops in the graph to collect
+        related context.
+        """
+        if self._vector_index is None or len(self._vector_index) == 0:
+            return []
+
+        from clawgraph.vectors import get_embeddings
+
+        try:
+            query_emb = get_embeddings([question])[0]
+        except Exception:
+            log.debug("Failed to compute query embedding — skipping fallback")
+            return []
+
+        matches = self._vector_index.search(query_emb, top_k=5)
+        if not matches:
+            return []
+
+        results: list[dict[str, Any]] = []
+        seen: set[str] = set()
+
+        for entity_name, _score in matches:
+            neighbourhood = self._get_neighbourhood(entity_name)
+            for row in neighbourhood:
+                key = str(row)
+                if key not in seen:
+                    seen.add(key)
+                    results.append(row)
+
+        return results
+
+    def _get_neighbourhood(
+        self, entity_name: str, hops: int = 2
+    ) -> list[dict[str, Any]]:
+        """Retrieve the graph neighbourhood of an entity.
+
+        Fetches the entity itself plus all entities and relationships
+        reachable within *hops* traversal steps.
+        """
+        safe_name = entity_name.replace("'", "\\'")
+
+        # Start with the entity itself.
+        entity_rows = self._db.execute(
+            f"MATCH (e:Entity {{name: '{safe_name}'}}) "
+            f"RETURN e.name, e.label"
+        )
+
+        # 1-hop neighbourhood.
+        hop1 = self._db.execute(
+            f"MATCH (a:Entity {{name: '{safe_name}'}})-[r:Relates]-(b:Entity) "
+            f"RETURN a.name, r.type, b.name"
+        )
+
+        # 2-hop neighbourhood (only when hops >= 2 and 1-hop found results).
+        hop2: list[dict[str, Any]] = []
+        if hops >= 2 and hop1:
+            hop2 = self._db.execute(
+                f"MATCH (a:Entity {{name: '{safe_name}'}})"
+                f"-[r1:Relates]-(mid:Entity)"
+                f"-[r2:Relates]-(b:Entity) "
+                f"WHERE b.name <> '{safe_name}' "
+                f"RETURN a.name AS `a.name`, r1.type AS `r1.type`, "
+                f"mid.name AS `mid.name`, r2.type AS `r2.type`, "
+                f"b.name AS `b.name`"
+            )
+
+        return entity_rows + hop1 + hop2
 
 
 class AddResult:

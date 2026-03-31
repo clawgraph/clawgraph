@@ -126,6 +126,46 @@ mem = Memory(ontology=ont)
 
 Constraints are injected into the LLM prompt, so the model will only produce entities and relationships matching your schema.
 
+### Hybrid Retrieval (Vector Fallback)
+
+When a Cypher query returns empty results (e.g. due to a name mismatch), ClawGraph can fall back to vector similarity search over entity names and automatically traverse the graph neighbourhood of matching entities.
+
+```bash
+# Install with vector support
+pip install clawgraph[vectors]
+```
+
+```python
+from clawgraph import Memory
+
+mem = Memory(enable_vectors=True)
+
+# Store facts — entity names are also embedded as vectors
+mem.add("Alice works at Acme Corp")
+mem.add("Bob manages the engineering team at Acme Corp")
+
+# Exact Cypher match works as normal
+mem.query("Who works at Acme Corp?")
+
+# Fuzzy match — "ACME project" doesn't exist in the graph, but
+# vector similarity finds "Acme Corp" and returns its neighbourhood
+mem.query("Tell me about the ACME project")
+```
+
+**How it works:**
+
+1. `query()` first tries the LLM-generated Cypher query (primary path)
+2. If Cypher returns no results and vectors are enabled, it embeds the question using `text-embedding-3-small`
+3. Cosine similarity search finds the closest entity names in the vector index
+4. For each match, it traverses 1-2 hops in the graph to collect related context
+
+**Notes:**
+
+- `enable_vectors=False` (default) — works exactly as before with no extra dependencies
+- Requires `numpy` — installed via `pip install clawgraph[vectors]`
+- If `enable_vectors=True` is set without numpy installed, a clear `ImportError` is raised
+- Vector index persists to disk alongside the Kùzu database
+
 ## Architecture
 
 ```
