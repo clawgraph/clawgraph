@@ -189,6 +189,14 @@ class GraphDB:
             """Collect direct (1-hop) neighbors of the given entity."""
             new_neighbors: list[str] = []
 
+            def _add_rel(row: dict[str, Any]) -> None:
+                rel_key = (row["a.name"], row["r.type"], row["b.name"])
+                if rel_key not in seen_rels:
+                    seen_rels.add(rel_key)
+                    result["relationships"].append(
+                        {"a.name": row["a.name"], "r.type": row["r.type"], "b.name": row["b.name"]}
+                    )
+
             # Outgoing relationships
             out_rows = self.execute(
                 "MATCH (a:Entity {name: $name})-[r:Relates]->(b:Entity) "
@@ -196,12 +204,7 @@ class GraphDB:
                 {"name": name},
             )
             for row in out_rows:
-                rel_key = (row["a.name"], row["r.type"], row["b.name"])
-                if rel_key not in seen_rels:
-                    seen_rels.add(rel_key)
-                    result["relationships"].append(
-                        {"a.name": row["a.name"], "r.type": row["r.type"], "b.name": row["b.name"]}
-                    )
+                _add_rel(row)
                 if row["b.name"] not in seen_entities and row["b.name"] != entity_name:
                     seen_entities.add(row["b.name"])
                     result["entities"].append({"e.name": row["b.name"], "e.label": row["b.label"]})
@@ -214,12 +217,7 @@ class GraphDB:
                 {"name": name},
             )
             for row in in_rows:
-                rel_key = (row["a.name"], row["r.type"], row["b.name"])
-                if rel_key not in seen_rels:
-                    seen_rels.add(rel_key)
-                    result["relationships"].append(
-                        {"a.name": row["a.name"], "r.type": row["r.type"], "b.name": row["b.name"]}
-                    )
+                _add_rel(row)
                 if row["a.name"] not in seen_entities and row["a.name"] != entity_name:
                     seen_entities.add(row["a.name"])
                     result["entities"].append({"e.name": row["a.name"], "e.label": row["a.label"]})
