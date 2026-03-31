@@ -14,6 +14,7 @@ Covers:
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from clawgraph.db import GraphDB
@@ -81,11 +82,9 @@ class TestMigrateProperties:
         db.ensure_base_schema()  # Second call should be safe
         assert db.has_rel_table("Relates")
 
-    def test_migration_preserves_existing_data(self, tmp_path: str) -> None:
+    def test_migration_preserves_existing_data(self, tmp_path: Path) -> None:
         """Migration should add the column without losing existing data."""
-        from pathlib import Path
-
-        db_dir = Path(tmp_path) / "migrate_test"
+        db_dir = tmp_path / "migrate_test"
         db = GraphDB(db_path=str(db_dir))
         db.ensure_base_schema()
 
@@ -139,7 +138,7 @@ class TestBuildMergeCypherProperties:
     """Tests for build_merge_cypher() with relationship properties."""
 
     def test_includes_properties_in_set(self) -> None:
-        """MERGE statement should SET r.properties with JSON."""
+        """MERGE statement should SET r.properties with valid JSON."""
         entities = [
             {"name": "Alice", "label": "Person"},
             {"name": "Acme", "label": "Organization"},
@@ -154,8 +153,15 @@ class TestBuildMergeCypherProperties:
         ]
         cypher = build_merge_cypher(entities, relationships)
         assert "SET r.properties" in cypher
-        assert "2020" in cypher
-        assert "2024" in cypher
+        # Verify the JSON is properly serialized in the SET clause
+        # Extract the properties value from the SET clause
+        import re
+
+        match = re.search(r"SET r\.properties = '(.+?)'", cypher)
+        assert match is not None, "SET r.properties clause not found"
+        props_json = match.group(1)
+        parsed = json.loads(props_json)
+        assert parsed == {"from": "2020", "to": "2024"}
 
     def test_empty_properties_default(self) -> None:
         """When no properties given, should default to '{}'."""
