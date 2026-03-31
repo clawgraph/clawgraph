@@ -2,12 +2,31 @@
 
 from __future__ import annotations
 
+import re
 import tarfile
+import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 import kuzu
+
+
+def _normalize_name(name: str) -> str:
+    """Normalize an entity name for deduplication.
+
+    Applies: unicode NFC normalization, lowercase, collapse whitespace, strip.
+
+    Args:
+        name: Raw entity name.
+
+    Returns:
+        Normalized name string.
+    """
+    result = unicodedata.normalize("NFC", name)
+    result = result.lower()
+    result = re.sub(r"\s+", " ", result).strip()
+    return result
 
 
 class GraphDB:
@@ -122,6 +141,7 @@ class GraphDB:
         self.create_node_table(
             "Entity",
             {"name": "STRING", "label": "STRING",
+             "aliases": "STRING",
              "created_at": "STRING", "updated_at": "STRING"},
         )
         self.create_rel_table(
@@ -130,12 +150,52 @@ class GraphDB:
         )
         # Migrate existing DBs: add timestamp columns if missing
         self._migrate_timestamps()
+        # Migrate existing DBs: add aliases column if missing
+        self._migrate_aliases()
 
     def get_all_entities(self) -> list[dict[str, Any]]:
-        """Get all entities in the graph."""
+        """Get all entities in the graph.
+
+        Returns entities with name, label, and aliases.
+        """
         if not self.has_node_table("Entity"):
             return []
-        return self.execute("MATCH (e:Entity) RETURN e.name, e.label")
+        return self.execute("MATCH (e:Entity) RETURN e.name, e.label, e.aliases")
+
+    def find_entity_by_normalized_name(self, normalized: str) -> dict[str, Any] | None:
+        """Find an entity whose name matches the given normalized form.
+
+        Performs a case-insensitive, whitespace-collapsed lookup
+        against all entity names in the graph.
+
+        Args:
+            normalized: The already-normalized name to search for.
+
+        Returns:
+            The first matching entity dict, or None if no match.
+        """
+        if not self.has_node_table("Entity"):
+            return None
+        rows = self.execute("MATCH (e:Entity) RETURN e.name, e.label, e.aliases")
+        for row in rows:
+            existing_name: str = row.get("e.name", "")
+            if _normalize_name(existing_name) == normalized:
+                return row
+        return None
+
+    def update_entity_aliases(self, canonical_name: str, aliases: str) -> None:
+        """Update the aliases field for an entity.
+
+        Args:
+            canonical_name: The entity's primary key name.
+            aliases: Pipe-separated string of alias names.
+        """
+        safe_name = canonical_name.replace("'", "\\'")
+        safe_aliases = aliases.replace("'", "\\'")
+        self.execute(
+            f"MATCH (e:Entity {{name: '{safe_name}'}}) "
+            f"SET e.aliases = '{safe_aliases}'"
+        )
 
     def get_all_relationships(self) -> list[dict[str, Any]]:
         """Get all relationships in the graph."""
@@ -257,6 +317,18 @@ class GraphDB:
                 self._conn.execute(stmt)
             except Exception:
                 pass  # Column likely already exists
+
+    def _migrate_aliases(self) -> None:
+        """Add aliases column to Entity table if it doesn't exist.
+
+        This is a no-op for new databases. For databases created before
+        entity resolution was added, it attempts to ALTER TABLE to add
+        the column. Failures are silently ignored (column may already exist).
+        """
+        try:
+            self._conn.execute("ALTER TABLE Entity ADD aliases STRING DEFAULT ''")
+        except Exception:
+            pass  # Column likely already exists
 
     @staticmethod
     def now_iso() -> str:
