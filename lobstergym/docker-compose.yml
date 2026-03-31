@@ -3,9 +3,15 @@
 #
 # Usage:
 #   docker compose -f lobstergym/docker-compose.yml up -d
-#   docker compose -f lobstergym/docker-compose.yml run eval-clawgraph
-#   docker compose -f lobstergym/docker-compose.yml run eval-default
+#   docker compose -f lobstergym/docker-compose.yml run --rm eval-clawgraph
+#   docker compose -f lobstergym/docker-compose.yml run --rm eval-default
 #   docker compose -f lobstergym/docker-compose.yml down
+#
+# Smoke tests (concurrent):
+#   docker compose -f lobstergym/docker-compose.yml up smoke-clawgraph smoke-default
+#
+# Eval (concurrent — uses separate gateways, shared mock services):
+#   docker compose -f lobstergym/docker-compose.yml up eval-clawgraph eval-default
 # =======================================================================
 
 services:
@@ -119,7 +125,8 @@ services:
             "enabled": true,
             "headless": true,
             "noSandbox": true,
-            "executablePath": "/usr/bin/google-chrome-stable",            "launchArgs": ["--disable-gpu", "--disable-extensions", "--disable-dev-shm-usage"],            "ssrfPolicy": {
+            "executablePath": "/usr/bin/google-chrome-stable",
+            "ssrfPolicy": {
               "dangerouslyAllowPrivateNetwork": true
             }
           }
@@ -289,7 +296,6 @@ services:
             "headless": true,
             "noSandbox": true,
             "executablePath": "/usr/bin/google-chrome-stable",
-            "launchArgs": ["--disable-gpu", "--disable-extensions", "--disable-dev-shm-usage"],
             "ssrfPolicy": {
               "dangerouslyAllowPrivateNetwork": true
             }
@@ -364,7 +370,6 @@ services:
             "headless": true,
             "noSandbox": true,
             "executablePath": "/usr/bin/google-chrome-stable",
-            "launchArgs": ["--disable-gpu", "--disable-extensions", "--disable-dev-shm-usage"],
             "ssrfPolicy": {
               "dangerouslyAllowPrivateNetwork": true
             }
@@ -460,7 +465,6 @@ services:
             "headless": true,
             "noSandbox": true,
             "executablePath": "/usr/bin/google-chrome-stable",
-            "launchArgs": ["--disable-gpu", "--disable-extensions", "--disable-dev-shm-usage"],
             "ssrfPolicy": {
               "dangerouslyAllowPrivateNetwork": true
             }
@@ -535,7 +539,6 @@ services:
             "headless": true,
             "noSandbox": true,
             "executablePath": "/usr/bin/google-chrome-stable",
-            "launchArgs": ["--disable-gpu", "--disable-extensions", "--disable-dev-shm-usage"],
             "ssrfPolicy": {
               "dangerouslyAllowPrivateNetwork": true
             }
