@@ -43,6 +43,7 @@ from clawgraph.llm import (
     LLMError,
     build_merge_cypher,
     generate_cypher,
+    identify_retraction_targets,
     infer_ontology,
     infer_ontology_batch,
 )
@@ -187,6 +188,107 @@ class Memory:
         """Get all relationships in the graph."""
         return self._db.get_all_relationships()
 
+    def delete_entity(self, name: str) -> DeleteResult:
+        """Delete an entity and all its relationships from the graph.
+
+        Uses DETACH DELETE to cascade-remove all connected relationships.
+
+        Args:
+            name: The entity name to delete.
+
+        Returns:
+            DeleteResult indicating success and what was removed.
+        """
+        found = self._db.delete_entity(name)
+        if not found:
+            return DeleteResult(
+                ok=False,
+                deleted_entities=[],
+                deleted_relationships=[],
+                errors=[f"Entity '{name}' not found"],
+            )
+        return DeleteResult(
+            ok=True,
+            deleted_entities=[name],
+            deleted_relationships=[],  # cascade — count unknown
+        )
+
+    def retract(self, statement: str) -> DeleteResult:
+        """Retract a fact by identifying and removing the relevant relationship(s).
+
+        Uses the LLM to determine which relationship(s) the statement refers to,
+        then deletes them from the graph.
+
+        Args:
+            statement: Natural language statement describing the fact to retract
+                       (e.g., "Alice works at Acme").
+
+        Returns:
+            DeleteResult indicating success and what was removed.
+        """
+        targets = identify_retraction_targets(
+            statement,
+            existing_ontology=self._ontology.to_context_string(),
+            model=self._model,
+        )
+
+        deleted_rels: list[str] = []
+        deleted_entities: list[str] = []
+        errors: list[str] = []
+
+        # Delete targeted relationships
+        for rel in targets.get("relationships", []):
+            from_name = rel.get("from", "")
+            to_name = rel.get("to", "")
+            rel_type = rel.get("type", "")
+            if not from_name or not to_name or not rel_type:
+                errors.append(f"Incomplete relationship target: {rel}")
+                continue
+
+            removed = self._db.delete_relationship(from_name, to_name, rel_type)
+            if removed:
+                deleted_rels.append(f"{from_name}-[{rel_type}]->{to_name}")
+            else:
+                errors.append(
+                    f"Relationship not found: {from_name}-[{rel_type}]->{to_name}"
+                )
+
+        # Delete targeted entities (only if explicitly requested by LLM)
+        for entity_name in targets.get("entities", []):
+            removed = self._db.delete_entity(entity_name)
+            if removed:
+                deleted_entities.append(entity_name)
+            else:
+                errors.append(f"Entity not found: {entity_name}")
+
+        return DeleteResult(
+            ok=len(deleted_rels) > 0 or len(deleted_entities) > 0,
+            deleted_entities=deleted_entities,
+            deleted_relationships=deleted_rels,
+            errors=errors,
+        )
+
+    def update(self, old_statement: str, new_statement: str) -> UpdateResult:
+        """Update a fact by retracting the old one and adding the new one.
+
+        Convenience method that combines retract() + add().
+
+        Args:
+            old_statement: The fact to retract (e.g., "Alice works at Acme").
+            new_statement: The replacement fact (e.g., "Alice works at NewCo").
+
+        Returns:
+            UpdateResult with retraction and addition details.
+        """
+        retract_result = self.retract(old_statement)
+        add_result = self.add(new_statement)
+
+        return UpdateResult(
+            ok=add_result.ok,
+            retracted=retract_result,
+            added=add_result,
+        )
+
     def export(self) -> dict[str, Any]:
         """Export the full graph as a dictionary."""
         return {
@@ -325,4 +427,65 @@ class AddResult:
             "relationships": self.relationships,
             "executed": self.executed,
             "errors": self.errors,
+        }
+
+
+class DeleteResult:
+    """Result of a delete or retract operation."""
+
+    def __init__(
+        self,
+        ok: bool,
+        deleted_entities: list[str],
+        deleted_relationships: list[str],
+        errors: list[str] | None = None,
+    ) -> None:
+        self.ok = ok
+        self.deleted_entities = deleted_entities
+        self.deleted_relationships = deleted_relationships
+        self.errors = errors or []
+
+    def __repr__(self) -> str:
+        return (
+            f"DeleteResult(ok={self.ok}, "
+            f"deleted_entities={len(self.deleted_entities)}, "
+            f"deleted_relationships={len(self.deleted_relationships)}, "
+            f"errors={len(self.errors)})"
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary."""
+        return {
+            "ok": self.ok,
+            "deleted_entities": self.deleted_entities,
+            "deleted_relationships": self.deleted_relationships,
+            "errors": self.errors,
+        }
+
+
+class UpdateResult:
+    """Result of an update operation (retract + add)."""
+
+    def __init__(
+        self,
+        ok: bool,
+        retracted: DeleteResult,
+        added: AddResult,
+    ) -> None:
+        self.ok = ok
+        self.retracted = retracted
+        self.added = added
+
+    def __repr__(self) -> str:
+        return (
+            f"UpdateResult(ok={self.ok}, "
+            f"retracted={self.retracted!r}, added={self.added!r})"
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary."""
+        return {
+            "ok": self.ok,
+            "retracted": self.retracted.to_dict(),
+            "added": self.added.to_dict(),
         }

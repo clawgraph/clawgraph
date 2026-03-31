@@ -349,5 +349,103 @@ def config(
         out_console.print_json(json.dumps(cfg, indent=2))
 
 
+@app.command()
+def delete(
+    entity_name: str = typer.Argument(..., help="Name of the entity to delete."),
+    output: OutputFormat = typer.Option(
+        OutputFormat.human, "--output", "-o", help="Output format."
+    ),
+    yes: bool = typer.Option(
+        False, "--yes", "-y", help="Skip confirmation prompt."
+    ),
+) -> None:
+    """Delete an entity and all its relationships from the graph."""
+    from clawgraph.db import GraphDB
+
+    if not yes:
+        confirmed = typer.confirm(
+            f"Delete entity '{entity_name}' and all its relationships?"
+        )
+        if not confirmed:
+            console.print("[yellow]Aborted.[/yellow]")
+            raise typer.Exit()
+
+    db = GraphDB()
+    db.ensure_base_schema()
+    found = db.delete_entity(entity_name)
+
+    if found:
+        result = {
+            "ok": True,
+            "deleted_entities": [entity_name],
+            "deleted_relationships": [],
+            "errors": [],
+        }
+        if output == OutputFormat.human:
+            console.print(
+                f"[bold green]Deleted entity '{entity_name}' "
+                f"and all its relationships.[/bold green]"
+            )
+        else:
+            _output(result, output)
+    else:
+        result = {
+            "ok": False,
+            "deleted_entities": [],
+            "deleted_relationships": [],
+            "errors": [f"Entity '{entity_name}' not found"],
+        }
+        if output == OutputFormat.human:
+            console.print(
+                f"[bold yellow]Entity '{entity_name}' not found.[/bold yellow]"
+            )
+        else:
+            _output(result, output)
+        raise typer.Exit(1)
+
+
+@app.command()
+def retract(
+    statement: str = typer.Argument(
+        ..., help="Natural language statement describing the fact to retract."
+    ),
+    output: OutputFormat = typer.Option(
+        OutputFormat.human, "--output", "-o", help="Output format."
+    ),
+    model: str | None = typer.Option(
+        None, "--model", "-m", help="Override LLM model."
+    ),
+) -> None:
+    """Retract a fact from the graph memory."""
+    from clawgraph.memory import Memory
+
+    console.print(f"[bold blue]Retracting:[/bold blue] {statement}")
+
+    try:
+        mem = Memory(model=model)
+        result = mem.retract(statement)
+    except Exception as e:
+        console.print(f"[bold red]Error:[/bold red] {e}")
+        raise typer.Exit(1)
+
+    if output == OutputFormat.human:
+        if result.ok:
+            if result.deleted_relationships:
+                for rel in result.deleted_relationships:
+                    console.print(f"[green]  ✓ Removed:[/green] {rel}")
+            if result.deleted_entities:
+                for ent in result.deleted_entities:
+                    console.print(f"[green]  ✓ Removed entity:[/green] {ent}")
+            console.print("[bold green]Done![/bold green]")
+        else:
+            console.print(
+                "[bold yellow]No matching facts found to retract.[/bold yellow]"
+            )
+            for err in result.errors:
+                console.print(f"[dim]  {err}[/dim]")
+    else:
+        _output(result.to_dict(), output)
+
+
 if __name__ == "__main__":
     app()
