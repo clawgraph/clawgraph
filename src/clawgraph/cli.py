@@ -324,7 +324,13 @@ def import_facts(
         if not file_path.exists():
             console.print(f"[bold red]Error:[/bold red] File not found: {path}")
             raise typer.Exit(1)
-        raw = file_path.read_text(encoding="utf-8")
+        try:
+            raw = file_path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            console.print(
+                f"[bold red]Error:[/bold red] Cannot read {path} — not valid UTF-8."
+            )
+            raise typer.Exit(1)
 
     if not raw.strip():
         console.print("[yellow]No facts found in input.[/yellow]")
@@ -403,7 +409,7 @@ def _parse_import_input(raw: str, path: str) -> list[str]:
         if not isinstance(data, list):
             console.print("[bold red]Error:[/bold red] JSON must be an array of strings.")
             raise typer.Exit(1)
-        return [str(item) for item in data if str(item).strip()]
+        return [s for item in data if (s := str(item).strip())]
 
     # Plain text: one fact per line
     return [line.strip() for line in stripped.splitlines() if line.strip()]
