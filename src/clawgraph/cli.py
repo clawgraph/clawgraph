@@ -13,6 +13,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 from clawgraph import __version__
+from clawgraph.memory import Memory
 
 app = typer.Typer(
     name="clawgraph",
@@ -136,8 +137,8 @@ def add(
     for entity in entities:
         ontology.add_node_label(entity.get("label", "Unknown"), {"name": "STRING"})
     for rel in relationships:
-        from_label = _find_label(rel.get("from", ""), entities)
-        to_label = _find_label(rel.get("to", ""), entities)
+        from_label = Memory._find_label(rel.get("from", ""), entities)
+        to_label = Memory._find_label(rel.get("to", ""), entities)
         ontology.add_relationship_type(rel.get("type", "RELATED_TO"), from_label, to_label)
 
     result = {
@@ -153,16 +154,8 @@ def add(
             console.print("[bold green]Done![/bold green]")
         else:
             console.print(f"[bold yellow]Completed with {len(errors)} error(s)[/bold yellow]")
-    else:
-        _output(result, output)
 
-
-def _find_label(name: str, entities: list[dict[str, str]]) -> str:
-    """Find the label for an entity by name."""
-    for entity in entities:
-        if entity.get("name") == name:
-            return entity.get("label", "Unknown")
-    return "Unknown"
+    _output(result, output)
 
 
 @app.command("add-batch")
@@ -176,14 +169,15 @@ def add_batch(
     ),
 ) -> None:
     """Add multiple facts in a single LLM call (faster for batch operations)."""
-    from clawgraph.memory import Memory
+    from clawgraph.db import DatabaseError
+    from clawgraph.llm import LLMError
 
     console.print(f"[bold blue]Batch adding {len(statements)} statements...[/bold blue]")
 
     try:
         mem = Memory(model=model)
         result = mem.add_batch(statements)
-    except Exception as e:
+    except (LLMError, DatabaseError) as e:
         console.print(f"[bold red]Error:[/bold red] {e}")
         raise typer.Exit(1)
 

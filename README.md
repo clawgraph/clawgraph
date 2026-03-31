@@ -18,7 +18,7 @@ ClawGraph converts natural language into graph memory. Tell it facts, it stores 
 - **Automatic ontology** — the LLM infers and maintains your graph schema
 - **Python API** — `from clawgraph import Memory` for use in agentic loops
 - **Batch mode** — process multiple facts in a single LLM call
-- **Provider-agnostic** — works with any LLM via LiteLLM (OpenAI, Anthropic, etc.)
+- **Provider-agnostic** — works with any OpenAI-compatible API (OpenAI, Azure, local LLMs via base_url)
 - **Idempotent** — adding the same fact twice won't create duplicates
 
 ## Installation
@@ -137,7 +137,7 @@ ClawGraph uses a **generic schema** — all entities are stored as `Entity(name,
 | Component | Library | Why |
 |-----------|---------|-----|
 | CLI | [Typer](https://typer.tiangolo.com/) | Type-hint driven, minimal boilerplate |
-| LLM | [LiteLLM](https://docs.litellm.ai/) | Any provider via one interface |
+| LLM | [OpenAI SDK](https://github.com/openai/openai-python) | Direct, supports any OpenAI-compatible endpoint via base_url |
 | Graph DB | [Kùzu](https://kuzudb.com/) | Embedded, no server, native Cypher |
 | Output | [Rich](https://rich.readthedocs.io/) | Tables, panels, colors |
 
@@ -161,13 +161,13 @@ ClawGraph needs an API key from your LLM provider. There are three ways to provi
 
 **1. Project `.env` file (recommended)**
 
-Create a `.env` file in your working directory:
+Create a `.env` file at `~/.clawgraph/.env`:
 
 ```bash
 OPENAI_API_KEY=sk-proj-...
 ```
 
-ClawGraph auto-loads `.env` from the current directory. This file takes precedence over system environment variables.
+ClawGraph auto-loads this file on startup. Existing environment variables take precedence (the `.env` won't override them).
 
 **2. Environment variable**
 
