@@ -284,7 +284,7 @@ class Memory:
         add_result = self.add(new_statement)
 
         return UpdateResult(
-            ok=add_result.ok,
+            ok=retract_result.ok and add_result.ok,
             retracted=retract_result,
             added=add_result,
         )
