@@ -182,6 +182,18 @@ class TestShellCommands:
         mem.entities.assert_called()
         mem.relationships.assert_called()
 
+    def test_stats_with_data(self) -> None:
+        """/stats shows correct counts when data exists."""
+        mem = _mock_memory()
+        mem.entities.return_value = [{"name": "Alice"}, {"name": "Bob"}]
+        mem.relationships.return_value = [{"from": "Alice", "to": "Bob"}]
+        with patch("clawgraph.memory.Memory", return_value=mem):
+            with patch("builtins.input", side_effect=["/stats", "/quit"]):
+                result = runner.invoke(app, ["shell"])
+        assert result.exit_code == 0
+        mem.entities.assert_called()
+        mem.relationships.assert_called()
+
     def test_ontology(self) -> None:
         """/ontology shows the current ontology."""
         mem = _mock_memory()

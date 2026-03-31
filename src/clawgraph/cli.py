@@ -341,7 +341,8 @@ def shell(
             "[bold]ClawGraph Interactive Shell[/bold]\n"
             "Type a fact to add it, prefix with [cyan]?[/cyan] to query.\n"
             "Commands: [green]/export[/green] [green]/stats[/green] "
-            "[green]/ontology[/green] [green]/clear[/green] [green]/quit[/green]",
+            "[green]/ontology[/green] [green]/clear[/green] "
+            "[green]/quit[/green] (or [green]/q[/green])",
             border_style="blue",
         )
     )
