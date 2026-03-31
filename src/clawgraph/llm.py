@@ -15,13 +15,20 @@ from openai import OpenAI, OpenAIError
 
 from clawgraph.config import load_config
 
+# Maximum length for entity/relationship names to prevent abuse
+_MAX_NAME_LENGTH = 500
+
+# Pattern for safe entity names (alphanumeric, spaces, hyphens, underscores, dots)
+_SAFE_NAME_PATTERN = re.compile(r"^[\w\s.\-']+$", re.UNICODE)
+
 
 def _load_dotenv() -> None:
-    """Load .env file from cwd if present.
+    """Load .env file from ~/.clawgraph/.env if present.
 
-    .env values OVERRIDE system env vars so the project config wins.
+    Uses setdefault so existing env vars are NOT overridden.
+    This prevents a malicious .env in CWD from hijacking API keys.
     """
-    env_path = os.path.join(os.getcwd(), ".env")
+    env_path = os.path.join(os.path.expanduser("~"), ".clawgraph", ".env")
     if os.path.exists(env_path):
         with open(env_path) as f:
             for line in f:
@@ -32,7 +39,7 @@ def _load_dotenv() -> None:
                 key = key.strip()
                 val = val.strip().strip("'\"")
                 if key and val:
-                    os.environ[key] = val
+                    os.environ.setdefault(key, val)
 
 
 _load_dotenv()
@@ -255,11 +262,35 @@ def infer_ontology_batch(
         raise LLMError(f"Failed to parse batch ontology response: {e}\nRaw: {cleaned}") from e
 
 
+def _validate_name(value: str, field: str) -> str:
+    """Validate and sanitize an entity/relationship name.
+
+    Args:
+        value: The name string to validate.
+        field: Field label for error messages.
+
+    Returns:
+        The sanitized name.
+
+    Raises:
+        LLMError: If the name is empty, too long, or contains unsafe chars.
+    """
+    if not value or not value.strip():
+        raise LLMError(f"Empty {field} name from LLM output")
+    value = value.strip()
+    if len(value) > _MAX_NAME_LENGTH:
+        raise LLMError(f"{field} name exceeds {_MAX_NAME_LENGTH} chars")
+    if not _SAFE_NAME_PATTERN.match(value):
+        raise LLMError(f"Unsafe characters in {field} name: {value!r}")
+    return value
+
+
 def build_merge_cypher(entities: list[dict[str, str]], relationships: list[dict[str, str]]) -> str:
     """Build MERGE Cypher statements from extracted entities and relationships.
 
     This generates Kùzu-compatible MERGE queries using the generic
-    Entity/Relates schema.
+    Entity/Relates schema. All names are validated for safe characters
+    and length before being interpolated into queries.
 
     Args:
         entities: List of dicts with 'name' and 'label'.
@@ -267,6 +298,9 @@ def build_merge_cypher(entities: list[dict[str, str]], relationships: list[dict[
 
     Returns:
         Multi-line Cypher string with MERGE statements.
+
+    Raises:
+        LLMError: If any entity/relationship name is invalid.
     """
     from clawgraph.db import GraphDB
 
@@ -274,17 +308,22 @@ def build_merge_cypher(entities: list[dict[str, str]], relationships: list[dict[
     lines: list[str] = []
 
     for entity in entities:
-        name = entity["name"].replace("'", "\\'")
-        label = entity.get("label", "Unknown").replace("'", "\\'")
+        name = _validate_name(entity["name"], "entity")
+        label = _validate_name(entity.get("label", "Unknown"), "label")
+        name = name.replace("'", "\\'")
+        label = label.replace("'", "\\'")
         lines.append(
             f"MERGE (e:Entity {{name: '{name}'}}) "
             f"SET e.label = '{label}', e.updated_at = '{now}';"
         )
 
     for rel in relationships:
-        from_name = rel["from"].replace("'", "\\'")
-        to_name = rel["to"].replace("'", "\\'")
-        rel_type = rel.get("type", "RELATED_TO").replace("'", "\\'")
+        from_name = _validate_name(rel["from"], "relationship source")
+        to_name = _validate_name(rel["to"], "relationship target")
+        rel_type = _validate_name(rel.get("type", "RELATED_TO"), "relationship type")
+        from_name = from_name.replace("'", "\\'")
+        to_name = to_name.replace("'", "\\'")
+        rel_type = rel_type.replace("'", "\\'")
         lines.append(
             f"MATCH (a:Entity {{name: '{from_name}'}}), (b:Entity {{name: '{to_name}'}}) "
             f"MERGE (a)-[r:Relates {{type: '{rel_type}'}}]->(b);"

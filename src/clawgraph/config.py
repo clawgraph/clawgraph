@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -46,14 +48,26 @@ def load_config() -> dict[str, Any]:
 def save_config(config: dict[str, Any]) -> None:
     """Save configuration to ~/.clawgraph/config.yaml.
 
+    On Unix-like systems, sets directory permissions to 0o700 and
+    file permissions to 0o600 to prevent other users reading config
+    (which may contain API keys).
+
     Args:
         config: Configuration dictionary to save.
     """
     config_path = get_config_path()
     config_path.parent.mkdir(parents=True, exist_ok=True)
 
+    # Restrict directory permissions on Unix
+    if sys.platform != "win32":
+        os.chmod(config_path.parent, 0o700)
+
     with open(config_path, "w") as f:
         yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+
+    # Restrict file permissions on Unix
+    if sys.platform != "win32":
+        os.chmod(config_path, 0o600)
 
 
 def get_config_value(key: str) -> Any:

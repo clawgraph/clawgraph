@@ -49,6 +49,46 @@ class TestSanitizeCypher:
     def test_removes_trailing_semicolon(self) -> None:
         assert sanitize_cypher("MATCH (n) RETURN n;") == "MATCH (n) RETURN n"
 
+
+class TestCypherSecurityHardening:
+    """Security-focused tests for Cypher validation."""
+
+    def test_load_blocked(self) -> None:
+        result = validate_cypher("LOAD CSV FROM 'file:///etc/passwd'")
+        assert not result.is_valid
+        assert any("LOAD" in e for e in result.errors)
+
+    def test_copy_blocked(self) -> None:
+        result = validate_cypher("COPY Entity FROM 'data.csv'")
+        assert not result.is_valid
+        assert any("COPY" in e for e in result.errors)
+
+    def test_export_blocked(self) -> None:
+        result = validate_cypher("EXPORT DATABASE 'backup'")
+        assert not result.is_valid
+        assert any("EXPORT" in e for e in result.errors)
+
+    def test_single_line_comment_blocked(self) -> None:
+        result = validate_cypher("MATCH (n) RETURN n // hidden DROP TABLE")
+        assert not result.is_valid
+        assert any("comment" in e.lower() for e in result.errors)
+
+    def test_block_comment_blocked(self) -> None:
+        result = validate_cypher("MATCH (n) /* DROP TABLE */ RETURN n")
+        assert not result.is_valid
+        assert any("comment" in e.lower() for e in result.errors)
+
+    def test_carriage_return_blocked(self) -> None:
+        result = validate_cypher("MATCH (n)\rRETURN n")
+        assert not result.is_valid
+        assert any("Carriage" in e for e in result.errors)
+
+    def test_query_length_limit(self) -> None:
+        long_query = "MATCH (n) RETURN n " + "a" * 5000
+        result = validate_cypher(long_query)
+        assert not result.is_valid
+        assert any("length" in e for e in result.errors)
+
     def test_handles_plain_fences(self) -> None:
         raw = "```\nMATCH (n) RETURN n\n```"
         assert sanitize_cypher(raw) == "MATCH (n) RETURN n"

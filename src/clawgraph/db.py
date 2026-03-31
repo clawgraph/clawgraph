@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 import tarfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 import kuzu
+
+logger = logging.getLogger(__name__)
 
 
 class GraphDB:
@@ -58,7 +61,8 @@ class GraphDB:
                 rows.append(dict(zip(result.get_column_names(), row)))
             return rows
         except Exception as e:
-            raise DatabaseError(f"Cypher execution failed: {e}") from e
+            logger.debug("Cypher execution failed: %s", e)
+            raise DatabaseError("Cypher execution failed") from e
 
     def get_tables(self) -> list[dict[str, Any]]:
         """Get all tables in the database."""
@@ -233,6 +237,13 @@ class GraphDB:
                 if not members:
                     raise DatabaseError("Empty snapshot archive")
                 top_dir = members[0].split("/")[0]
+                # Validate all paths to prevent path traversal attacks
+                for name in members:
+                    member_path = (target / name).resolve()
+                    if not str(member_path).startswith(str(target.resolve())):
+                        raise DatabaseError(
+                            f"Snapshot contains path traversal: {name}"
+                        )
                 tar.extractall(str(target))
         except tarfile.TarError as e:
             raise DatabaseError(f"Failed to extract snapshot: {e}") from e
@@ -255,8 +266,8 @@ class GraphDB:
         for stmt in migrations:
             try:
                 self._conn.execute(stmt)
-            except Exception:
-                pass  # Column likely already exists
+            except RuntimeError:
+                pass  # Column already exists
 
     @staticmethod
     def now_iso() -> str:
