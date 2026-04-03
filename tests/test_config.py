@@ -17,6 +17,15 @@ class TestLoadConfig:
         assert config["llm"]["temperature"] == 0.0
         assert config["output"]["format"] == "human"
 
+    def test_returns_independent_default_copy(self, tmp_path: Path) -> None:
+        fake_path = tmp_path / "nonexistent" / "config.yaml"
+        with patch("clawgraph.config.get_config_path", return_value=fake_path):
+            first = load_config()
+            first["llm"]["model"] = "mutated"
+            second = load_config()
+
+        assert second["llm"]["model"] == "gpt-4o-mini"
+
 
 class TestDeepMerge:
     """Tests for _deep_merge."""

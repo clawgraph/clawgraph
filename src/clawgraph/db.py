@@ -30,12 +30,19 @@ class GraphDB:
         if str(db_path) != ":memory:":
             # Only create the parent dir — Kùzu creates the DB dir itself
             Path(db_path).parent.mkdir(parents=True, exist_ok=True)
-        self._db = kuzu.Database(str(self._db_path))
-        self._conn = kuzu.Connection(self._db)
+        db_instance = kuzu.Database(str(self._db_path))
+        self._db: kuzu.Database | None = db_instance
+        self._conn: kuzu.Connection | None = kuzu.Connection(db_instance)
 
     @property
     def connection(self) -> kuzu.Connection:
         """Get the active database connection."""
+        return self._require_open()
+
+    def _require_open(self) -> kuzu.Connection:
+        """Return the active connection or raise if the database is closed."""
+        if self._db is None or self._conn is None:
+            raise DatabaseError("Database is closed")
         return self._conn
 
     def execute(self, cypher: str, parameters: dict[str, Any] | None = None) -> list[dict[str, Any]]:
@@ -49,7 +56,7 @@ class GraphDB:
             List of result rows as dictionaries.
         """
         try:
-            raw_result = self._conn.execute(cypher, parameters or {})
+            raw_result = self._require_open().execute(cypher, parameters or {})
             # kuzu.Connection.execute() returns QueryResult | list[QueryResult]
             result = raw_result if not isinstance(raw_result, list) else raw_result[0]
             rows: list[dict[str, Any]] = []
@@ -147,10 +154,8 @@ class GraphDB:
 
     def close(self) -> None:
         """Close the database connection and release file locks."""
-        if hasattr(self, "_conn"):
-            del self._conn
-        if hasattr(self, "_db"):
-            del self._db
+        self._conn = None
+        self._db = None
 
     @property
     def db_path(self) -> str:
@@ -182,10 +187,11 @@ class GraphDB:
 
         output.parent.mkdir(parents=True, exist_ok=True)
         db_dir = Path(self._db_path)
+        self._require_open()
 
         # Close connection and DB to release file locks
-        del self._conn
-        del self._db
+        self._conn = None
+        self._db = None
 
         try:
             with tarfile.open(str(output), "w:gz") as tar:
@@ -193,14 +199,15 @@ class GraphDB:
                     # Skip lock files to avoid issues on restore
                     if item.name.startswith(".") and "lock" in item.name.lower():
                         continue
-                    arcname = str(db_dir.name / item.relative_to(db_dir))
+                    arcname = str(Path(db_dir.name) / item.relative_to(db_dir))
                     tar.add(str(item), arcname=arcname)
                 # Add the directory entry itself
                 tar.add(str(db_dir), arcname=db_dir.name, recursive=False)
         finally:
             # Reconnect regardless of success/failure
-            self._db = kuzu.Database(str(self._db_path))
-            self._conn = kuzu.Connection(self._db)
+            db_instance = kuzu.Database(str(self._db_path))
+            self._db = db_instance
+            self._conn = kuzu.Connection(db_instance)
 
         return output
 
@@ -252,9 +259,10 @@ class GraphDB:
             "ALTER TABLE Entity ADD updated_at STRING DEFAULT ''",
             "ALTER TABLE Relates ADD created_at STRING DEFAULT ''",
         ]
+        conn = self._require_open()
         for stmt in migrations:
             try:
-                self._conn.execute(stmt)
+                conn.execute(stmt)
             except Exception:
                 pass  # Column likely already exists
 

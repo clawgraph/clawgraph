@@ -130,3 +130,12 @@ class TestOntologyConstraints:
         d = ontology.to_dict()
         assert "allowed_labels" not in d
         assert "allowed_relationship_types" not in d
+
+    def test_to_dict_returns_independent_nested_state(self, tmp_path: Path) -> None:
+        ontology = Ontology(config_dir=tmp_path)
+        ontology.add_node_label("Person", {"name": "STRING"})
+
+        payload = ontology.to_dict()
+        payload["nodes"]["Person"]["name"] = "MUTATED"
+
+        assert ontology.nodes["Person"]["name"] == "STRING"

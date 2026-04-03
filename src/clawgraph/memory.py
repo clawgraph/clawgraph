@@ -34,6 +34,7 @@ Usage::
 
 from __future__ import annotations
 
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -41,7 +42,7 @@ from clawgraph.cypher import sanitize_cypher, validate_cypher
 from clawgraph.db import GraphDB
 from clawgraph.llm import (
     LLMError,
-    build_merge_cypher,
+    build_merge_cypher_groups,
     generate_cypher,
     infer_ontology,
     infer_ontology_batch,
@@ -243,28 +244,14 @@ class Memory:
         relationships: list[dict[str, str]],
     ) -> AddResult:
         """Execute inferred entities/relationships against the DB."""
-        cypher = build_merge_cypher(entities, relationships)
+        cypher_groups = build_merge_cypher_groups(entities, relationships)
 
-        executed: list[str] = []
+        executed = 0
         errors: list[str] = []
 
-        for line in cypher.split("\n"):
-            line = line.strip()
-            if not line:
-                continue
-
-            clean = sanitize_cypher(line)
-            validation = validate_cypher(clean)
-
-            if not validation:
-                errors.append(f"Validation failed: {clean} — {validation.errors}")
-                continue
-
-            try:
-                self._db.execute(clean)
-                executed.append(clean)
-            except Exception as e:
-                errors.append(f"DB error: {e}")
+        for group in cypher_groups:
+            if self._execute_cypher_group(group, errors):
+                executed += 1
 
         # Update ontology
         for entity in entities:
@@ -281,9 +268,48 @@ class Memory:
         return AddResult(
             entities=entities,
             relationships=relationships,
-            executed=len(executed),
+            executed=executed,
             errors=errors,
         )
+
+    def _execute_cypher_group(self, lines: list[str], errors: list[str]) -> bool:
+        """Execute a logical write composed of one or more Cypher statements."""
+        if not lines:
+            return False
+
+        clean_lines: list[str] = []
+        for line in lines:
+            clean = sanitize_cypher(line)
+            validation = validate_cypher(clean)
+
+            if not validation:
+                errors.append(f"Validation failed: {clean} — {validation.errors}")
+                return False
+
+            clean_lines.append(clean)
+
+        conn = self._db.connection
+
+        try:
+            conn.execute("BEGIN TRANSACTION")
+        except Exception as e:
+            errors.append(f"DB error: {e}")
+            return False
+
+        try:
+            for clean in clean_lines:
+                conn.execute(clean)
+            conn.execute("COMMIT")
+        except Exception as e:
+            try:
+                conn.execute("ROLLBACK")
+            except Exception:
+                pass
+
+            errors.append(f"DB error: {e}")
+            return False
+
+        return True
 
     @staticmethod
     def _find_label(name: str, entities: list[dict[str, str]]) -> str:
@@ -321,8 +347,8 @@ class AddResult:
         """Convert to dictionary."""
         return {
             "ok": self.ok,
-            "entities": self.entities,
-            "relationships": self.relationships,
+            "entities": deepcopy(self.entities),
+            "relationships": deepcopy(self.relationships),
             "executed": self.executed,
-            "errors": self.errors,
+            "errors": list(self.errors),
         }

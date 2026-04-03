@@ -45,6 +45,36 @@ Do not add new dependencies without justification.
 - Use `tmp_path` fixture for tests that touch the filesystem
 - Run tests with: `pytest`
 
+## TDD Workflow (Red → Green → Refactor)
+
+All feature work and bug fixes **must** follow the red/green/refactor cycle:
+
+1. **Red** — Write a failing test first. The test defines the expected behavior
+   before any implementation exists. Run `pytest` and confirm the test fails
+   with the expected assertion error.
+2. **Green** — Write the minimum code to make the test pass. Do not add
+   anything beyond what the test requires. Run `pytest` and confirm green.
+3. **Refactor** — Clean up the implementation (and the test if needed) while
+   keeping all tests green. No behavior changes in this step.
+
+### Agent TDD Rules
+
+- **Never write implementation without a failing test first.** If a test
+  doesn't exist for the behavior you're changing, write one before touching
+  production code.
+- **One test at a time.** Don't batch-write multiple tests before going green.
+  Write one failing test → make it pass → repeat.
+- **Run the full suite after each green step** (`pytest`) to catch regressions.
+- **Bug fixes start with a regression test** that reproduces the bug (red),
+  then fix the code (green).
+- **Commit at green.** Every commit should have a passing test suite. Never
+  commit red.
+- **Test names describe behavior, not implementation.** Use
+  `test_merge_idempotent` not `test_merge_function`. Tests are living
+  documentation.
+- **Keep tests fast.** Use `:memory:` databases, mocks for LLM calls, and
+  `tmp_path` for filesystem work. The full suite should run in seconds.
+
 ## Style
 
 - Python 3.10+

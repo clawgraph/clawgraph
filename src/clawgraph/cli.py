@@ -72,28 +72,22 @@ def add(
     ),
 ) -> None:
     """Add a fact or relationship to the graph memory."""
-    from clawgraph.cypher import sanitize_cypher, validate_cypher
-    from clawgraph.db import DatabaseError, GraphDB
-    from clawgraph.llm import LLMError, build_merge_cypher, infer_ontology
-    from clawgraph.ontology import Ontology
+    from clawgraph.llm import LLMError
+    from clawgraph.memory import Memory
 
     console.print(f"[bold blue]Adding:[/bold blue] {statement}")
-
-    # Step 1: Infer ontology (entities + relationships)
-    ontology = Ontology()
     console.print("[dim]  Inferring entities...[/dim]")
+
     try:
-        inferred = infer_ontology(
-            statement,
-            existing_ontology=ontology.to_context_string(),
-            model=model,
-        )
+        mem = Memory(model=model)
+        add_result = mem.add(statement)
     except LLMError as e:
         console.print(f"[bold red]LLM Error:[/bold red] {e}")
         raise typer.Exit(1)
 
-    entities = inferred.get("entities", [])
-    relationships = inferred.get("relationships", [])
+    entities = add_result.entities
+    relationships = add_result.relationships
+    errors = add_result.errors
 
     if not entities:
         console.print("[yellow]No entities found in the statement.[/yellow]")
@@ -101,50 +95,11 @@ def add(
 
     console.print(f"[dim]  Found {len(entities)} entities, {len(relationships)} relationships[/dim]")
 
-    # Step 2: Build Cypher MERGE statements
-    cypher = build_merge_cypher(entities, relationships)
-    console.print("[dim]  Generated Cypher:[/dim]")
-
-    # Step 3: Execute each statement
-    db = GraphDB()
-    db.ensure_base_schema()
-
-    executed: list[str] = []
-    errors: list[str] = []
-
-    for line in cypher.split("\n"):
-        line = line.strip()
-        if not line:
-            continue
-
-        clean = sanitize_cypher(line)
-        validation = validate_cypher(clean)
-
-        if not validation:
-            errors.append(f"Validation failed for: {clean} — {validation.errors}")
-            continue
-
-        try:
-            db.execute(clean)
-            executed.append(clean)
-            console.print(f"[green]  ✓[/green] {clean}")
-        except DatabaseError as e:
-            errors.append(f"DB error: {e}")
-            console.print(f"[red]  ✗[/red] {e}")
-
-    # Step 4: Update ontology
-    for entity in entities:
-        ontology.add_node_label(entity.get("label", "Unknown"), {"name": "STRING"})
-    for rel in relationships:
-        from_label = _find_label(rel.get("from", ""), entities)
-        to_label = _find_label(rel.get("to", ""), entities)
-        ontology.add_relationship_type(rel.get("type", "RELATED_TO"), from_label, to_label)
-
-    result = {
-        "status": "ok" if not errors else "partial",
+    payload = {
+        "status": "ok" if add_result.ok else "partial",
         "entities": entities,
         "relationships": relationships,
-        "executed": len(executed),
+        "executed": add_result.executed,
         "errors": errors,
     }
 
@@ -152,17 +107,11 @@ def add(
         if not errors:
             console.print("[bold green]Done![/bold green]")
         else:
-            console.print(f"[bold yellow]Completed with {len(errors)} error(s)[/bold yellow]")
+            console.print(
+                f"[bold yellow]Completed with {len(errors)} error(s)[/bold yellow]"
+            )
     else:
-        _output(result, output)
-
-
-def _find_label(name: str, entities: list[dict[str, str]]) -> str:
-    """Find the label for an entity by name."""
-    for entity in entities:
-        if entity.get("name") == name:
-            return entity.get("label", "Unknown")
-    return "Unknown"
+        _output(payload, output)
 
 
 @app.command("add-batch")
@@ -307,46 +256,55 @@ def export(
     ),
 ) -> None:
     """Export the graph memory to JSON."""
-    from clawgraph.db import GraphDB
+    from clawgraph.memory import Memory
 
-    db = GraphDB()
-    entities = db.get_all_entities()
-    relationships = db.get_all_relationships()
-
-    data = {
-        "entities": entities,
-        "relationships": relationships,
-    }
+    mem = Memory()
+    data = mem.export()
 
     json_str = json.dumps(data, indent=2)
 
     if path:
         path.write_text(json_str, encoding="utf-8")
         console.print(f"[green]Exported to {path}[/green]")
+    elif output == OutputFormat.json:
+        _output(data, output)
     else:
-        out_console.print(json_str)
+        out_console.print_json(json_str)
 
 
 @app.command()
 def config(
     key: str | None = typer.Argument(None, help="Config key (e.g., llm.model)."),
     value: str | None = typer.Argument(None, help="Config value to set."),
+    output: OutputFormat = typer.Option(
+        OutputFormat.human, "--output", "-o", help="Output format."
+    ),
 ) -> None:
     """Get or set configuration values."""
     from clawgraph.config import get_config_value, load_config, set_config_value
 
     if key and value:
         set_config_value(key, value)
-        console.print(f"[green]Set {key} = {value}[/green]")
+        payload = {"status": "ok", "key": key, "value": value}
+        if output == OutputFormat.json:
+            _output(payload, output)
+        else:
+            console.print(f"[green]Set {key} = {value}[/green]")
     elif key:
         val = get_config_value(key)
-        if val is None:
+        payload = {"key": key, "value": val}
+        if output == OutputFormat.json:
+            _output(payload, output)
+        elif val is None:
             console.print(f"[yellow]{key} is not set[/yellow]")
         else:
             out_console.print(str(val))
     else:
         cfg = load_config()
-        out_console.print_json(json.dumps(cfg, indent=2))
+        if output == OutputFormat.json:
+            _output(cfg, output)
+        else:
+            out_console.print_json(json.dumps(cfg, indent=2))
 
 
 if __name__ == "__main__":

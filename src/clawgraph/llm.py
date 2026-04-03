@@ -255,6 +255,56 @@ def infer_ontology_batch(
         raise LLMError(f"Failed to parse batch ontology response: {e}\nRaw: {cleaned}") from e
 
 
+def build_merge_cypher_groups(
+    entities: list[dict[str, str]],
+    relationships: list[dict[str, str]],
+) -> list[list[str]]:
+    """Build grouped MERGE Cypher statements from extracted entities and relationships.
+
+    Each inner list represents one logical write. Keeping the grouping explicit
+    avoids coupling callers to a hard-coded number of statements per entity or
+    relationship.
+
+    Args:
+        entities: List of dicts with 'name' and 'label'.
+        relationships: List of dicts with 'from', 'to', and 'type'.
+
+    Returns:
+        List of logical write groups, where each group contains one or more
+        Cypher statements.
+    """
+    from clawgraph.db import GraphDB
+
+    now = GraphDB.now_iso()
+    groups: list[list[str]] = []
+
+    for entity in entities:
+        name = entity["name"].replace("'", "\\'")
+        label = entity.get("label", "Unknown").replace("'", "\\'")
+        groups.append([
+            f"MERGE (e:Entity {{name: '{name}'}}) "
+            f"SET e.label = '{label}', e.updated_at = '{now}';",
+            f"MATCH (e:Entity {{name: '{name}'}}) "
+            f"WHERE e.created_at IS NULL OR e.created_at = '' "
+            f"SET e.created_at = '{now}';",
+        ])
+
+    for rel in relationships:
+        from_name = rel["from"].replace("'", "\\'")
+        to_name = rel["to"].replace("'", "\\'")
+        rel_type = rel.get("type", "RELATED_TO").replace("'", "\\'")
+        groups.append([
+            f"MATCH (a:Entity {{name: '{from_name}'}}), (b:Entity {{name: '{to_name}'}}) "
+            f"MERGE (a)-[r:Relates {{type: '{rel_type}'}}]->(b);",
+            f"MATCH (a:Entity {{name: '{from_name}'}})-[r:Relates {{type: '{rel_type}'}}]->"
+            f"(b:Entity {{name: '{to_name}'}}) "
+            f"WHERE r.created_at IS NULL OR r.created_at = '' "
+            f"SET r.created_at = '{now}';",
+        ])
+
+    return groups
+
+
 def build_merge_cypher(entities: list[dict[str, str]], relationships: list[dict[str, str]]) -> str:
     """Build MERGE Cypher statements from extracted entities and relationships.
 
@@ -268,29 +318,11 @@ def build_merge_cypher(entities: list[dict[str, str]], relationships: list[dict[
     Returns:
         Multi-line Cypher string with MERGE statements.
     """
-    from clawgraph.db import GraphDB
-
-    now = GraphDB.now_iso()
-    lines: list[str] = []
-
-    for entity in entities:
-        name = entity["name"].replace("'", "\\'")
-        label = entity.get("label", "Unknown").replace("'", "\\'")
-        lines.append(
-            f"MERGE (e:Entity {{name: '{name}'}}) "
-            f"SET e.label = '{label}', e.updated_at = '{now}';"
-        )
-
-    for rel in relationships:
-        from_name = rel["from"].replace("'", "\\'")
-        to_name = rel["to"].replace("'", "\\'")
-        rel_type = rel.get("type", "RELATED_TO").replace("'", "\\'")
-        lines.append(
-            f"MATCH (a:Entity {{name: '{from_name}'}}), (b:Entity {{name: '{to_name}'}}) "
-            f"MERGE (a)-[r:Relates {{type: '{rel_type}'}}]->(b);"
-        )
-
-    return "\n".join(lines)
+    return "\n".join(
+        line
+        for group in build_merge_cypher_groups(entities, relationships)
+        for line in group
+    )
 
 
 def _build_write_prompt(ontology_context: str) -> str:

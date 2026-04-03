@@ -44,6 +44,31 @@ class TestMemoryAdd:
         assert len(entities) == 1
 
     @patch("clawgraph.llm._get_client")
+    def test_add_preserves_created_at_on_repeat(self, mock_get_client: MagicMock) -> None:
+        json_resp = '{"entities": [{"name": "John", "label": "Person"}], "relationships": []}'
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock(message=MagicMock(content=json_resp))]
+        mock_client.chat.completions.create.return_value = mock_response
+        mock_get_client.return_value = mock_client
+
+        first_ts = "2026-04-03T00:00:00+00:00"
+        second_ts = "2026-04-03T00:00:01+00:00"
+
+        mem = Memory(db_path=":memory:")
+        with patch("clawgraph.db.GraphDB.now_iso", side_effect=[first_ts, second_ts]):
+            mem.add("John is a person")
+            mem.add("John is a person")
+
+        rows = mem._db.execute(
+            "MATCH (e:Entity {name: 'John'}) RETURN e.created_at, e.updated_at"
+        )
+
+        assert len(rows) == 1
+        assert rows[0]["e.created_at"] == first_ts
+        assert rows[0]["e.updated_at"] == second_ts
+
+    @patch("clawgraph.llm._get_client")
     def test_entities_and_relationships(self, mock_get_client: MagicMock) -> None:
         json_resp = '{"entities": [{"name": "A", "label": "Person"}, {"name": "B", "label": "Person"}], "relationships": [{"from": "A", "to": "B", "type": "KNOWS"}]}'
         mock_client = MagicMock()
@@ -91,6 +116,49 @@ class TestMemoryAddBatch:
         result = mem.add_batch([])
         assert result.ok
         assert result.executed == 0
+
+
+class TestMemoryExecution:
+    """Tests for lower-level Memory write execution behavior."""
+
+    def test_execute_inferred_uses_explicit_cypher_groups(self) -> None:
+        mem = Memory(db_path=":memory:")
+        entities = [{"name": "John", "label": "Person"}]
+
+        with patch(
+            "clawgraph.memory.build_merge_cypher_groups",
+            return_value=[[
+                "MERGE (e:Entity {name: 'John'}) SET e.label = 'Person';",
+                "MATCH (e:Entity {name: 'John'}) SET e.created_at = '2026-04-03T00:00:00+00:00';",
+                "MATCH (e:Entity {name: 'John'}) SET e.updated_at = '2026-04-03T00:00:01+00:00';",
+            ]],
+            create=True,
+        ):
+            result = mem._execute_inferred(entities, [])
+
+        rows = mem._db.execute(
+            "MATCH (e:Entity {name: 'John'}) RETURN e.created_at, e.updated_at"
+        )
+
+        assert result.executed == 1
+        assert rows[0]["e.created_at"] == "2026-04-03T00:00:00+00:00"
+        assert rows[0]["e.updated_at"] == "2026-04-03T00:00:01+00:00"
+
+    def test_execute_cypher_group_rolls_back_on_db_error(self) -> None:
+        mem = Memory(db_path=":memory:")
+        errors: list[str] = []
+
+        ok = mem._execute_cypher_group(
+            [
+                "MERGE (e:Entity {name: 'John'}) SET e.label = 'Person';",
+                "MERGE (g:Ghost {name: 'John'}) SET g.label = 'Ghost';",
+            ],
+            errors,
+        )
+
+        assert ok is False
+        assert errors
+        assert mem.entities() == []
 
 
 class TestMemoryQuery:
@@ -151,6 +219,21 @@ class TestAddResult:
         d = r.to_dict()
         assert d["ok"] is False
         assert d["errors"] == ["err"]
+
+    def test_to_dict_returns_independent_state(self) -> None:
+        r = AddResult(
+            entities=[{"name": "A"}],
+            relationships=[{"from": "A", "to": "B", "type": "KNOWS"}],
+            executed=1,
+            errors=[],
+        )
+
+        payload = r.to_dict()
+        payload["entities"][0]["name"] = "mutated"
+        payload["errors"].append("err")
+
+        assert r.entities[0]["name"] == "A"
+        assert r.errors == []
 
 
 class TestMemoryConstraints:

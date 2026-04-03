@@ -2,7 +2,16 @@
 
 from unittest.mock import MagicMock, patch
 
-from clawgraph.llm import LLMError, build_merge_cypher
+from hypothesis import given
+from hypothesis import strategies as st
+
+from clawgraph.llm import LLMError, build_merge_cypher, build_merge_cypher_groups
+
+SAFE_CYPHER_TEXT = st.text(
+    alphabet="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 _-'",
+    min_size=1,
+    max_size=20,
+)
 
 
 class TestBuildMergeCypher:
@@ -14,6 +23,26 @@ class TestBuildMergeCypher:
         assert "MERGE" in cypher
         assert "John" in cypher
         assert "Person" in cypher
+
+    def test_returns_one_group_per_logical_write(self) -> None:
+        entities = [
+            {"name": "John", "label": "Person"},
+            {"name": "Acme", "label": "Organization"},
+        ]
+        relationships = [
+            {"from": "John", "to": "Acme", "type": "WORKS_AT"},
+        ]
+
+        with patch(
+            "clawgraph.db.GraphDB.now_iso",
+            return_value="2026-04-03T00:00:00+00:00",
+        ):
+            groups = build_merge_cypher_groups(entities, relationships)
+            flattened = [line for group in groups for line in group]
+
+            assert len(groups) == len(entities) + len(relationships)
+            assert all(groups)
+            assert "\n".join(flattened) == build_merge_cypher(entities, relationships)
 
     def test_entity_and_relationship(self) -> None:
         entities = [
@@ -49,6 +78,64 @@ class TestBuildMergeCypher:
         assert "updated_at" in cypher
         # Timestamp should be ISO format with T separator
         assert "T" in cypher
+
+    @given(
+        entities=st.lists(
+            st.fixed_dictionaries(
+                {
+                    "name": SAFE_CYPHER_TEXT,
+                    "label": SAFE_CYPHER_TEXT,
+                }
+            ),
+            min_size=1,
+            max_size=5,
+        ),
+        relationships=st.lists(
+            st.fixed_dictionaries(
+                {
+                    "from": SAFE_CYPHER_TEXT,
+                    "to": SAFE_CYPHER_TEXT,
+                    "type": SAFE_CYPHER_TEXT,
+                }
+            ),
+            max_size=5,
+        ),
+    )
+    def test_property_includes_schema_timestamps(
+        self,
+        entities: list[dict[str, str]],
+        relationships: list[dict[str, str]],
+    ) -> None:
+        cypher = build_merge_cypher(entities, relationships)
+        lines = [line for line in cypher.splitlines() if line.strip()]
+
+        assert len(lines) == (2 * len(entities)) + (2 * len(relationships))
+
+        entity_merge_lines = [
+            line for line in lines if line.startswith("MERGE (e:Entity")
+        ]
+        entity_created_at_lines = [
+            line
+            for line in lines
+            if line.startswith("MATCH (e:Entity") and "created_at" in line
+        ]
+        relationship_merge_lines = [
+            line for line in lines if "MERGE (a)-[r:Relates" in line
+        ]
+        relationship_created_at_lines = [
+            line for line in lines if "WHERE r.created_at" in line
+        ]
+
+        assert len(entity_merge_lines) == len(entities)
+        assert len(entity_created_at_lines) == len(entities)
+        assert len(relationship_merge_lines) == len(relationships)
+        assert len(relationship_created_at_lines) == len(relationships)
+
+        for line in entity_merge_lines:
+            assert "updated_at" in line
+
+        for line in entity_created_at_lines + relationship_created_at_lines:
+            assert "created_at" in line
 
 
 class TestGenerateCypher:
