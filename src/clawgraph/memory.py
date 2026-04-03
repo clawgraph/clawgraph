@@ -38,7 +38,7 @@ from pathlib import Path
 from typing import Any
 
 from clawgraph.cypher import sanitize_cypher, validate_cypher
-from clawgraph.db import GraphDB
+from clawgraph.db import GraphDB, _normalize_name
 from clawgraph.llm import (
     LLMError,
     build_merge_cypher,
@@ -242,7 +242,16 @@ class Memory:
         entities: list[dict[str, str]],
         relationships: list[dict[str, str]],
     ) -> AddResult:
-        """Execute inferred entities/relationships against the DB."""
+        """Execute inferred entities/relationships against the DB.
+
+        Performs entity resolution before Cypher generation: incoming
+        entity names are normalized and matched against existing entities
+        in the graph.  When a match is found the canonical (existing) name
+        is reused and the incoming variant is recorded as an alias.
+        """
+        # --- Entity resolution ---
+        entities, relationships = self._resolve_entities(entities, relationships)
+
         cypher = build_merge_cypher(entities, relationships)
 
         executed: list[str] = []
@@ -284,6 +293,106 @@ class Memory:
             executed=len(executed),
             errors=errors,
         )
+
+    def _resolve_entities(
+        self,
+        entities: list[dict[str, str]],
+        relationships: list[dict[str, str]],
+    ) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
+        """Resolve incoming entities against existing graph entities.
+
+        For each incoming entity, normalize its name and check if an
+        entity with the same normalized name already exists.  If so,
+        remap the incoming name to the canonical (existing) name and
+        record the incoming variant as an alias.
+
+        Args:
+            entities: Entities extracted by the LLM.
+            relationships: Relationships extracted by the LLM.
+
+        Returns:
+            Tuple of (resolved_entities, resolved_relationships) with
+            names remapped to canonical forms.
+        """
+        # Map incoming name → canonical name
+        name_map: dict[str, str] = {}
+        # Fast lookup: normalized form → canonical name (avoids re-normalizing)
+        norm_to_canonical: dict[str, str] = {}
+        resolved_entities: list[dict[str, str]] = []
+        seen_canonical: set[str] = set()
+
+        for entity in entities:
+            incoming_name = entity.get("name", "")
+            normalized = _normalize_name(incoming_name)
+
+            # Check if we already resolved this normalized name in this batch
+            if normalized in norm_to_canonical:
+                canonical = norm_to_canonical[normalized]
+                name_map[incoming_name] = canonical
+                # Record incoming as alias
+                self._record_alias(canonical, incoming_name)
+                continue
+
+            # Check against existing entities in the DB
+            existing = self._db.find_entity_by_normalized_name(normalized)
+            if existing is not None:
+                canonical = existing.get("e.name", incoming_name)
+                name_map[incoming_name] = canonical
+                norm_to_canonical[normalized] = canonical
+                if canonical not in seen_canonical:
+                    # Keep the canonical entity in our resolved list
+                    resolved_entity = dict(entity)
+                    resolved_entity["name"] = canonical
+                    resolved_entities.append(resolved_entity)
+                    seen_canonical.add(canonical)
+                # Record incoming as alias if different from canonical
+                if incoming_name != canonical:
+                    current_aliases = existing.get("e.aliases", "") or ""
+                    self._record_alias(
+                        canonical, incoming_name, current_aliases=current_aliases
+                    )
+            else:
+                name_map[incoming_name] = incoming_name
+                norm_to_canonical[normalized] = incoming_name
+                if incoming_name not in seen_canonical:
+                    resolved_entities.append(dict(entity))
+                    seen_canonical.add(incoming_name)
+
+        # Remap relationship names
+        resolved_relationships: list[dict[str, str]] = []
+        for rel in relationships:
+            resolved_rel = dict(rel)
+            resolved_rel["from"] = name_map.get(rel.get("from", ""), rel.get("from", ""))
+            resolved_rel["to"] = name_map.get(rel.get("to", ""), rel.get("to", ""))
+            resolved_relationships.append(resolved_rel)
+
+        return resolved_entities, resolved_relationships
+
+    def _record_alias(
+        self,
+        canonical_name: str,
+        alias: str,
+        current_aliases: str | None = None,
+    ) -> None:
+        """Add an alias to an entity if it's not already recorded.
+
+        Args:
+            canonical_name: The entity's primary key name.
+            alias: The alias variant to record.
+            current_aliases: If provided, skip the DB lookup for existing
+                aliases and use this value instead.
+        """
+        if alias == canonical_name:
+            return
+        if current_aliases is None:
+            existing = self._db.find_entity_by_normalized_name(
+                _normalize_name(canonical_name)
+            )
+            current_aliases = (existing.get("e.aliases", "") or "") if existing else ""
+
+        alias_set = {a for a in current_aliases.split("|") if a}
+        alias_set.add(alias)
+        self._db.update_entity_aliases(canonical_name, "|".join(sorted(alias_set)))
 
     @staticmethod
     def _find_label(name: str, entities: list[dict[str, str]]) -> str:
