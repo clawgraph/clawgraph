@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 from hypothesis import given
 from hypothesis import strategies as st
 
-from clawgraph.llm import LLMError, build_merge_cypher
+from clawgraph.llm import LLMError, build_merge_cypher, build_merge_cypher_groups
 
 SAFE_CYPHER_TEXT = st.text(
     alphabet="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 _-'",
@@ -23,6 +23,22 @@ class TestBuildMergeCypher:
         assert "MERGE" in cypher
         assert "John" in cypher
         assert "Person" in cypher
+
+    def test_returns_one_group_per_logical_write(self) -> None:
+        entities = [
+            {"name": "John", "label": "Person"},
+            {"name": "Acme", "label": "Organization"},
+        ]
+        relationships = [
+            {"from": "John", "to": "Acme", "type": "WORKS_AT"},
+        ]
+
+        groups = build_merge_cypher_groups(entities, relationships)
+        flattened = [line for group in groups for line in group]
+
+        assert len(groups) == len(entities) + len(relationships)
+        assert all(groups)
+        assert "\n".join(flattened) == build_merge_cypher(entities, relationships)
 
     def test_entity_and_relationship(self) -> None:
         entities = [

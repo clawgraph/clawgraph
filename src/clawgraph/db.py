@@ -199,7 +199,7 @@ class GraphDB:
                     # Skip lock files to avoid issues on restore
                     if item.name.startswith(".") and "lock" in item.name.lower():
                         continue
-                    arcname = str(db_dir.name / item.relative_to(db_dir))
+                    arcname = str(Path(db_dir.name) / item.relative_to(db_dir))
                     tar.add(str(item), arcname=arcname)
                 # Add the directory entry itself
                 tar.add(str(db_dir), arcname=db_dir.name, recursive=False)

@@ -118,6 +118,49 @@ class TestMemoryAddBatch:
         assert result.executed == 0
 
 
+class TestMemoryExecution:
+    """Tests for lower-level Memory write execution behavior."""
+
+    def test_execute_inferred_uses_explicit_cypher_groups(self) -> None:
+        mem = Memory(db_path=":memory:")
+        entities = [{"name": "John", "label": "Person"}]
+
+        with patch(
+            "clawgraph.memory.build_merge_cypher_groups",
+            return_value=[[
+                "MERGE (e:Entity {name: 'John'}) SET e.label = 'Person';",
+                "MATCH (e:Entity {name: 'John'}) SET e.created_at = '2026-04-03T00:00:00+00:00';",
+                "MATCH (e:Entity {name: 'John'}) SET e.updated_at = '2026-04-03T00:00:01+00:00';",
+            ]],
+            create=True,
+        ):
+            result = mem._execute_inferred(entities, [])
+
+        rows = mem._db.execute(
+            "MATCH (e:Entity {name: 'John'}) RETURN e.created_at, e.updated_at"
+        )
+
+        assert result.executed == 1
+        assert rows[0]["e.created_at"] == "2026-04-03T00:00:00+00:00"
+        assert rows[0]["e.updated_at"] == "2026-04-03T00:00:01+00:00"
+
+    def test_execute_cypher_group_rolls_back_on_db_error(self) -> None:
+        mem = Memory(db_path=":memory:")
+        errors: list[str] = []
+
+        ok = mem._execute_cypher_group(
+            [
+                "MERGE (e:Entity {name: 'John'}) SET e.label = 'Person';",
+                "MERGE (g:Ghost {name: 'John'}) SET g.label = 'Ghost';",
+            ],
+            errors,
+        )
+
+        assert ok is False
+        assert errors
+        assert mem.entities() == []
+
+
 class TestMemoryQuery:
     """Tests for Memory.query() with mocked LLM."""
 

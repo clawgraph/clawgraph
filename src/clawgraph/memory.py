@@ -42,7 +42,7 @@ from clawgraph.cypher import sanitize_cypher, validate_cypher
 from clawgraph.db import GraphDB
 from clawgraph.llm import (
     LLMError,
-    build_merge_cypher,
+    build_merge_cypher_groups,
     generate_cypher,
     infer_ontology,
     infer_ontology_batch,
@@ -244,25 +244,12 @@ class Memory:
         relationships: list[dict[str, str]],
     ) -> AddResult:
         """Execute inferred entities/relationships against the DB."""
-        cypher_lines = [
-            line.strip()
-            for line in build_merge_cypher(entities, relationships).split("\n")
-            if line.strip()
-        ]
+        cypher_groups = build_merge_cypher_groups(entities, relationships)
 
         executed = 0
         errors: list[str] = []
-        line_index = 0
 
-        for _ in entities:
-            group = cypher_lines[line_index:line_index + 2]
-            line_index += 2
-            if self._execute_cypher_group(group, errors):
-                executed += 1
-
-        for _ in relationships:
-            group = cypher_lines[line_index:line_index + 2]
-            line_index += 2
+        for group in cypher_groups:
             if self._execute_cypher_group(group, errors):
                 executed += 1
 
@@ -290,6 +277,7 @@ class Memory:
         if not lines:
             return False
 
+        clean_lines: list[str] = []
         for line in lines:
             clean = sanitize_cypher(line)
             validation = validate_cypher(clean)
@@ -298,11 +286,28 @@ class Memory:
                 errors.append(f"Validation failed: {clean} — {validation.errors}")
                 return False
 
+            clean_lines.append(clean)
+
+        conn = self._db.connection
+
+        try:
+            conn.execute("BEGIN TRANSACTION")
+        except Exception as e:
+            errors.append(f"DB error: {e}")
+            return False
+
+        try:
+            for clean in clean_lines:
+                conn.execute(clean)
+            conn.execute("COMMIT")
+        except Exception as e:
             try:
-                self._db.execute(clean)
-            except Exception as e:
-                errors.append(f"DB error: {e}")
-                return False
+                conn.execute("ROLLBACK")
+            except Exception:
+                pass
+
+            errors.append(f"DB error: {e}")
+            return False
 
         return True
 

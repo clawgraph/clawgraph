@@ -1,5 +1,7 @@
 """Tests for the database layer."""
 
+import tarfile
+
 import pytest
 
 from clawgraph.db import DatabaseError, GraphDB
@@ -147,6 +149,26 @@ class TestSnapshot:
         archive = db.save_snapshot(tmp / "snap.tar.gz")
         assert archive.exists()
         assert archive.suffix == ".gz"
+
+    def test_save_snapshot_prefixes_members_with_db_dir(self, tmp_path: str) -> None:
+        from pathlib import Path
+
+        tmp = Path(tmp_path)
+        db_dir = tmp / "named-db"
+        db = GraphDB(db_path=str(db_dir))
+        db.ensure_base_schema()
+        db.execute("MERGE (e:Entity {name: 'Alice'}) SET e.label = 'Person'")
+
+        archive = db.save_snapshot(tmp / "snap.tar.gz")
+
+        with tarfile.open(archive, "r:gz") as tar:
+            names = tar.getnames()
+
+        assert db_dir.name in names
+        assert all(
+            name == db_dir.name or name.startswith(f"{db_dir.name}/")
+            for name in names
+        )
 
     def test_snapshot_in_memory_raises(self) -> None:
         db = GraphDB(db_path=":memory:")
