@@ -1,6 +1,6 @@
 # ClawGraph
 
-> Graph-based memory abstraction layer for AI agents.
+> Local-first, embedded graph memory for AI agents.
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
@@ -11,15 +11,34 @@
 
 ## What It Does
 
-ClawGraph converts natural language into graph memory. Tell it facts, it stores them in a local embedded graph database ([Kùzu](https://kuzudb.com/)). Ask it questions, it queries the graph and returns results.
+ClawGraph turns natural language into persistent graph memory. Tell it facts, it stores them in a local embedded graph database ([Kuzu](https://kuzudb.com/)). Ask it questions, it queries the graph and returns results.
+
+The project is currently focused on one clear lane: a small, inspectable, Python-first memory layer for agents that want structured recall without running separate infrastructure.
 
 - **Natural language in, graph memory out** — no Cypher knowledge required
-- **Embedded database** — no servers, no Docker, just a local file
+- **Local-first** — embedded Kuzu database, no server, no Docker, just a local file
+- **Inspectable** — query the graph directly, export JSON, inspect ontology evolution
 - **Automatic ontology** — the LLM infers and maintains your graph schema
 - **Python API** — `from clawgraph import Memory` for use in agentic loops
 - **Batch mode** — process multiple facts in a single LLM call
-- **Provider-agnostic** — works with any LLM via LiteLLM (OpenAI, Anthropic, etc.)
 - **Idempotent** — adding the same fact twice won't create duplicates
+
+## Current State
+
+ClawGraph is early-stage, but the core system is working and under active hardening.
+
+- Python package published on PyPI
+- Embedded persistence with snapshots and restore
+- JSON output across the CLI for agent use
+- Property-based and regression-tested core write/query paths
+- OpenAI-compatible LLM support today via the OpenAI SDK
+- Kuzu as the current database backend
+
+Planned direction:
+
+- broader LLM provider support beyond OpenAI-compatible APIs
+- additional database backends beyond Kuzu
+- better recall/context assembly for agent workflows
 
 ## Installation
 
@@ -59,7 +78,7 @@ clawgraph export graph.json
 clawgraph query "Who works at Acme?" --output json
 
 # Configure
-clawgraph config llm.model gpt-4o-mini
+clawgraph config llm.model gpt-5.4-mini
 clawgraph config                         # show all config
 ```
 
@@ -137,8 +156,8 @@ ClawGraph uses a **generic schema** — all entities are stored as `Entity(name,
 | Component | Library | Why |
 |-----------|---------|-----|
 | CLI | [Typer](https://typer.tiangolo.com/) | Type-hint driven, minimal boilerplate |
-| LLM | [LiteLLM](https://docs.litellm.ai/) | Any provider via one interface |
-| Graph DB | [Kùzu](https://kuzudb.com/) | Embedded, no server, native Cypher |
+| LLM | [OpenAI SDK](https://github.com/openai/openai-python) | OpenAI-compatible APIs today, simple direct integration |
+| Graph DB | [Kuzu](https://kuzudb.com/) | Embedded, no server, native Cypher |
 | Output | [Rich](https://rich.readthedocs.io/) | Tables, panels, colors |
 
 ## Configuration
@@ -147,7 +166,7 @@ Config lives at `~/.clawgraph/config.yaml`:
 
 ```yaml
 llm:
-  model: gpt-4o-mini
+  model: gpt-5.4-mini
   temperature: 0.0
 db:
   path: ~/.clawgraph/data
@@ -157,7 +176,7 @@ output:
 
 ### API Key Setup
 
-ClawGraph needs an API key from your LLM provider. There are three ways to provide it (in priority order):
+ClawGraph currently uses the OpenAI SDK and supports OpenAI-compatible endpoints. There are three ways to provide configuration (in priority order):
 
 **1. Project `.env` file (recommended)**
 
@@ -175,12 +194,12 @@ ClawGraph auto-loads `.env` from the current directory. This file takes preceden
 # OpenAI
 export OPENAI_API_KEY=sk-proj-...
 
-# Anthropic
-export ANTHROPIC_API_KEY=sk-ant-...
-
 # Azure OpenAI
 export AZURE_API_KEY=...
 export AZURE_API_BASE=https://your-resource.openai.azure.com/
+
+# Other OpenAI-compatible providers
+export OPENAI_BASE_URL=https://your-provider.example/v1
 ```
 
 **3. Config file**
@@ -188,30 +207,30 @@ export AZURE_API_BASE=https://your-resource.openai.azure.com/
 You can set the model (but not the key) via config:
 
 ```bash
-clawgraph config llm.model gpt-4o-mini
+clawgraph config llm.model gpt-5.4-mini
 ```
 
 ### Recommended Models
 
 | Model | Speed | Cost | Best for |
 |-------|-------|------|----------|
-| **`gpt-4o-mini`** | ~1s | ~$0.15/1M tokens | **Default.** Best balance of speed and accuracy for entity extraction. Recommended for agentic loops. |
-| `gpt-4o` | ~2-3s | ~$2.50/1M tokens | Higher accuracy on complex or ambiguous statements. |
-| `claude-3-5-haiku-latest` | ~1s | ~$0.25/1M tokens | Fast Anthropic alternative. |
-| `claude-sonnet-4-20250514` | ~2s | ~$3/1M tokens | Best Anthropic accuracy. |
+| **`gpt-5.4-mini`** | fast | moderate | **Recommended default.** Strong balance of speed and extraction quality for agent loops. |
+| `gpt-5.4` | slower | higher | Better choice for more ambiguous or higher-stakes extraction. |
 
-For agentic loops where you're calling `add()` frequently, **`gpt-4o-mini` is recommended** — it's fast enough for real-time use and accurate enough for entity extraction.
+For agentic loops where you're calling `add()` frequently, **`gpt-5.4-mini` is the recommended default**.
+
+Support for additional provider-specific presets will come later, but the near-term focus is making the OpenAI-compatible path solid and predictable.
 
 Override per-call with `--model`:
 
 ```bash
-clawgraph add "complex statement" --model gpt-4o
+clawgraph add "complex statement" --model gpt-5.4
 ```
 
 Or via the Python API:
 
 ```python
-mem = Memory(model="gpt-4o-mini")  # set once
+mem = Memory(model="gpt-5.4-mini")  # set once
 ```
 
 Data is stored at `~/.clawgraph/data` (Kùzu DB) and `~/.clawgraph/ontology.json`.
