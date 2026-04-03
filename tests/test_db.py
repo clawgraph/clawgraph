@@ -100,6 +100,13 @@ class TestGraphDB:
         assert db.has_rel_table("LINKS")
         assert not db.has_rel_table("NonExistent")
 
+    def test_execute_after_close_raises_database_error(self) -> None:
+        db = GraphDB(db_path=":memory:")
+        db.close()
+
+        with pytest.raises(DatabaseError, match="closed"):
+            db.execute("MATCH (e:Entity) RETURN e.name")
+
 
 class TestTimestampColumns:
     """Tests for timestamp column support."""

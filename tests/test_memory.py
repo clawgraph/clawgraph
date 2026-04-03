@@ -177,6 +177,21 @@ class TestAddResult:
         assert d["ok"] is False
         assert d["errors"] == ["err"]
 
+    def test_to_dict_returns_independent_state(self) -> None:
+        r = AddResult(
+            entities=[{"name": "A"}],
+            relationships=[{"from": "A", "to": "B", "type": "KNOWS"}],
+            executed=1,
+            errors=[],
+        )
+
+        payload = r.to_dict()
+        payload["entities"][0]["name"] = "mutated"
+        payload["errors"].append("err")
+
+        assert r.entities[0]["name"] == "A"
+        assert r.errors == []
+
 
 class TestMemoryConstraints:
     """Tests for Memory with ontology constraints."""

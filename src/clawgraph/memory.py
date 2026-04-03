@@ -34,6 +34,7 @@ Usage::
 
 from __future__ import annotations
 
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -341,8 +342,8 @@ class AddResult:
         """Convert to dictionary."""
         return {
             "ok": self.ok,
-            "entities": self.entities,
-            "relationships": self.relationships,
+            "entities": deepcopy(self.entities),
+            "relationships": deepcopy(self.relationships),
             "executed": self.executed,
-            "errors": self.errors,
+            "errors": list(self.errors),
         }
