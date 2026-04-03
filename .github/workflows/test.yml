@@ -54,6 +54,8 @@ jobs:
         run: mypy src/clawgraph/ --ignore-missing-imports
 
       - name: Run tests
+        env:
+          HYPOTHESIS_PROFILE: ci
         run: pytest --tb=short -q
 
   # ---------------------------------------------------------------

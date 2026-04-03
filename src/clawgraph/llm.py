@@ -278,7 +278,7 @@ def build_merge_cypher(entities: list[dict[str, str]], relationships: list[dict[
         label = entity.get("label", "Unknown").replace("'", "\\'")
         lines.append(
             f"MERGE (e:Entity {{name: '{name}'}}) "
-            f"SET e.label = '{label}', e.updated_at = '{now}';"
+            f"SET e.label = '{label}', e.created_at = '{now}', e.updated_at = '{now}';"
         )
 
     for rel in relationships:
@@ -287,7 +287,8 @@ def build_merge_cypher(entities: list[dict[str, str]], relationships: list[dict[
         rel_type = rel.get("type", "RELATED_TO").replace("'", "\\'")
         lines.append(
             f"MATCH (a:Entity {{name: '{from_name}'}}), (b:Entity {{name: '{to_name}'}}) "
-            f"MERGE (a)-[r:Relates {{type: '{rel_type}'}}]->(b);"
+            f"MERGE (a)-[r:Relates {{type: '{rel_type}'}}]->(b) "
+            f"SET r.created_at = '{now}';"
         )
 
     return "\n".join(lines)

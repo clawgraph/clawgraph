@@ -2,7 +2,16 @@
 
 from unittest.mock import MagicMock, patch
 
+from hypothesis import given
+from hypothesis import strategies as st
+
 from clawgraph.llm import LLMError, build_merge_cypher
+
+SAFE_CYPHER_TEXT = st.text(
+    alphabet="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 _-'",
+    min_size=1,
+    max_size=20,
+)
 
 
 class TestBuildMergeCypher:
@@ -49,6 +58,45 @@ class TestBuildMergeCypher:
         assert "updated_at" in cypher
         # Timestamp should be ISO format with T separator
         assert "T" in cypher
+
+    @given(
+        entities=st.lists(
+            st.fixed_dictionaries(
+                {
+                    "name": SAFE_CYPHER_TEXT,
+                    "label": SAFE_CYPHER_TEXT,
+                }
+            ),
+            min_size=1,
+            max_size=5,
+        ),
+        relationships=st.lists(
+            st.fixed_dictionaries(
+                {
+                    "from": SAFE_CYPHER_TEXT,
+                    "to": SAFE_CYPHER_TEXT,
+                    "type": SAFE_CYPHER_TEXT,
+                }
+            ),
+            max_size=5,
+        ),
+    )
+    def test_property_includes_schema_timestamps(
+        self,
+        entities: list[dict[str, str]],
+        relationships: list[dict[str, str]],
+    ) -> None:
+        cypher = build_merge_cypher(entities, relationships)
+        lines = [line for line in cypher.splitlines() if line.strip()]
+
+        assert len(lines) == len(entities) + len(relationships)
+
+        for line in lines[: len(entities)]:
+            assert "created_at" in line
+            assert "updated_at" in line
+
+        for line in lines[len(entities) :]:
+            assert "created_at" in line
 
 
 class TestGenerateCypher:
