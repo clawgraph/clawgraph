@@ -33,12 +33,16 @@ class TestBuildMergeCypher:
             {"from": "John", "to": "Acme", "type": "WORKS_AT"},
         ]
 
-        groups = build_merge_cypher_groups(entities, relationships)
-        flattened = [line for group in groups for line in group]
+        with patch(
+            "clawgraph.db.GraphDB.now_iso",
+            return_value="2026-04-03T00:00:00+00:00",
+        ):
+            groups = build_merge_cypher_groups(entities, relationships)
+            flattened = [line for group in groups for line in group]
 
-        assert len(groups) == len(entities) + len(relationships)
-        assert all(groups)
-        assert "\n".join(flattened) == build_merge_cypher(entities, relationships)
+            assert len(groups) == len(entities) + len(relationships)
+            assert all(groups)
+            assert "\n".join(flattened) == build_merge_cypher(entities, relationships)
 
     def test_entity_and_relationship(self) -> None:
         entities = [
