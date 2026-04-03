@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ClawGraph — Graph-based memory for AI agents</title>
-  <meta name="description" content="ClawGraph converts natural language into graph memory. An embedded graph database for AI agents — no servers, no Docker, just a local file.">
+  <title>ClawGraph — Local-first graph memory for AI agents</title>
+  <meta name="description" content="ClawGraph is local-first, embedded graph memory for AI agents. Structured recall, no server, no Docker, just a local file.">
   <meta name="keywords" content="clawgraph, graph memory, AI agents, knowledge graph, embedded database, kuzu, python, openclaw">
-  <meta property="og:title" content="ClawGraph — Graph-based memory for AI agents">
-  <meta property="og:description" content="Natural language in, graph memory out. An embedded graph database for AI agents.">
+  <meta property="og:title" content="ClawGraph — Local-first graph memory for AI agents">
+  <meta property="og:description" content="Natural language in, structured graph memory out. Local-first agent memory with an embedded database.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://clawgraph.github.io/clawgraph/">
   <link rel="canonical" href="https://clawgraph.github.io/clawgraph/">
@@ -81,7 +81,7 @@
   <div class="container">
     <header>
       <h1>ClawGraph</h1>
-      <p>Graph-based memory for AI agents</p>
+      <p>Local-first, embedded graph memory for AI agents</p>
       <div class="badges">
         <a href="https://pypi.org/project/clawgraph/"><img src="https://img.shields.io/pypi/v/clawgraph.svg" alt="PyPI"></a>
         <a href="https://github.com/clawgraph/clawgraph/actions/workflows/test.yml"><img src="https://github.com/clawgraph/clawgraph/actions/workflows/test.yml/badge.svg" alt="Tests"></a>
@@ -94,29 +94,35 @@
       <div class="features">
         <div class="feature">
           <h3>Natural Language In</h3>
-          <p>Tell it facts in plain English. The LLM converts them to graph structures automatically.</p>
+          <p>Tell it facts in plain English. ClawGraph turns them into structured graph memory automatically.</p>
         </div>
         <div class="feature">
-          <h3>Graph Memory Out</h3>
-          <p>Stored in an embedded Kùzu database. No servers, no Docker, just a local file.</p>
+          <h3>Local-First Storage</h3>
+          <p>Stored in an embedded Kuzu database. No servers, no Docker, just a local file.</p>
         </div>
         <div class="feature">
           <h3>Automatic Ontology</h3>
           <p>The LLM infers and maintains your graph schema as you add facts.</p>
         </div>
         <div class="feature">
+          <h3>Inspectable</h3>
+          <p>Query the graph directly, export JSON, and inspect how memory is actually being stored.</p>
+        </div>
+        <div class="feature">
           <h3>Python API</h3>
           <p>Drop into any agentic loop with <code>from clawgraph import Memory</code>.</p>
         </div>
         <div class="feature">
-          <h3>Idempotent</h3>
-          <p>Adding the same fact twice won't create duplicates. Uses MERGE, not CREATE.</p>
-        </div>
-        <div class="feature">
-          <h3>Provider Agnostic</h3>
-          <p>Works with any OpenAI-compatible API — OpenAI, Azure, local LLMs.</p>
+          <h3>Focused Today, Broader Later</h3>
+          <p>Today: OpenAI-compatible APIs and Kuzu. Future: broader LLM providers and additional database backends.</p>
         </div>
       </div>
+    </section>
+
+    <section>
+      <h2>Project Framing</h2>
+      <p>ClawGraph is aimed at one specific lane: a small, Python-first memory layer for agents that want structured recall without running separate infrastructure.</p>
+      <p>Instead of trying to be a full memory platform, it focuses on being local, inspectable, and easy to drop into agent workflows.</p>
     </section>
 
     <section>
@@ -137,7 +143,10 @@ clawgraph query "Where does John work?"
 clawgraph add-batch "Bob is a designer" "Bob works at Netflix"
 
 <span class="install"># JSON output for agents</span>
-clawgraph query "Who works at Acme?" --output json</code></pre>
+clawgraph query "Who works at Acme?" --output json
+
+<span class="install"># Recommended model</span>
+clawgraph config llm.model gpt-5.4-mini</code></pre>
     </section>
 
     <section>
@@ -148,6 +157,17 @@ with Memory() as mem:
     mem.add("John works at Acme Corp")
     mem.add("Alice is a data scientist at Google")
     results = mem.query("Who works at Acme?")</code></pre>
+    </section>
+
+    <section>
+      <h2>Current Defaults</h2>
+      <pre><code>llm:
+  model: gpt-5.4-mini
+  temperature: 0.0
+
+db:
+  path: ~/.clawgraph/data</code></pre>
+      <p>Recommended today: <code>gpt-5.4-mini</code> for fast agent loops. Higher-end models can be used for more ambiguous extraction workloads.</p>
     </section>
 
     <div class="links">
