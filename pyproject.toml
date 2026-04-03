@@ -38,6 +38,9 @@ dependencies = [
 clawgraph = "clawgraph.cli:app"
 
 [project.optional-dependencies]
+vectors = [
+    "numpy>=1.24.0",
+]
 dev = [
     "pytest==8.3.5",
     "pytest-cov==6.0.0",
