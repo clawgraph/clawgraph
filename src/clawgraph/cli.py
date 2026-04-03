@@ -280,22 +280,35 @@ def export(
 def config(
     key: str | None = typer.Argument(None, help="Config key (e.g., llm.model)."),
     value: str | None = typer.Argument(None, help="Config value to set."),
+    output: OutputFormat = typer.Option(
+        OutputFormat.human, "--output", "-o", help="Output format."
+    ),
 ) -> None:
     """Get or set configuration values."""
     from clawgraph.config import get_config_value, load_config, set_config_value
 
     if key and value:
         set_config_value(key, value)
-        console.print(f"[green]Set {key} = {value}[/green]")
+        payload = {"status": "ok", "key": key, "value": value}
+        if output == OutputFormat.json:
+            _output(payload, output)
+        else:
+            console.print(f"[green]Set {key} = {value}[/green]")
     elif key:
         val = get_config_value(key)
-        if val is None:
+        payload = {"key": key, "value": val}
+        if output == OutputFormat.json:
+            _output(payload, output)
+        elif val is None:
             console.print(f"[yellow]{key} is not set[/yellow]")
         else:
             out_console.print(str(val))
     else:
         cfg = load_config()
-        out_console.print_json(json.dumps(cfg, indent=2))
+        if output == OutputFormat.json:
+            _output(cfg, output)
+        else:
+            out_console.print_json(json.dumps(cfg, indent=2))
 
 
 if __name__ == "__main__":

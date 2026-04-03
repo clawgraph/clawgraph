@@ -46,3 +46,27 @@ class TestCliAdd:
 
         assert result.exit_code == 0
         assert payload["executed"] == 3
+
+
+class TestCliConfig:
+    """Tests for the config command."""
+
+    def test_config_supports_json_output_flag(self) -> None:
+        payload: dict[str, object] = {}
+        config_data = {
+            "llm": {"model": "gpt-4o-mini", "temperature": 0.0},
+            "output": {"format": "human"},
+        }
+
+        def capture_output(data: dict[str, object], fmt: OutputFormat) -> None:
+            assert fmt == OutputFormat.json
+            payload.update(data)
+
+        with (
+            patch("clawgraph.config.load_config", return_value=config_data),
+            patch("clawgraph.cli._output", side_effect=capture_output),
+        ):
+            result = runner.invoke(app, ["config", "--output", "json"])
+
+        assert result.exit_code == 0
+        assert payload == config_data
