@@ -31,6 +31,44 @@ class OutputFormat(str, Enum):
     json = "json"
 
 
+def _show_api_key_help(error: Exception) -> None:
+    """Show a helpful Rich panel when API key is missing.
+
+    Args:
+        error: The original LLMError exception.
+    """
+    console.print(
+        Panel(
+            "[bold yellow]No API key configured.[/bold yellow]\n\n"
+            "ClawGraph needs an LLM API key to process natural language.\n"
+            "Set one of the following:\n\n"
+            "  [cyan]1.[/cyan] Create a [bold].env[/bold] file in your project directory:\n"
+            "     [dim]OPENAI_API_KEY=sk-proj-...[/dim]\n\n"
+            "  [cyan]2.[/cyan] Set an environment variable:\n"
+            "     [dim]export OPENAI_API_KEY=sk-proj-...[/dim]\n\n"
+            "  [cyan]3.[/cyan] Add to config file ([dim]~/.clawgraph/config.yaml[/dim]):\n"
+            "     [dim]llm:\n"
+            "       api_key: sk-proj-...[/dim]\n\n"
+            "For non-OpenAI providers, also set [bold]OPENAI_BASE_URL[/bold] or\n"
+            "[bold]llm.base_url[/bold] in config.",
+            title="🔑 API Key Required",
+            border_style="red",
+        )
+    )
+
+
+def _is_api_key_error(error: Exception) -> bool:
+    """Check if an LLMError is about a missing API key.
+
+    Args:
+        error: The exception to check.
+
+    Returns:
+        True if the error is about a missing API key.
+    """
+    return "No API key found" in str(error)
+
+
 def _output(data: dict[str, Any], fmt: OutputFormat) -> None:
     """Output data in the selected format.
 
@@ -89,7 +127,10 @@ def add(
             model=model,
         )
     except LLMError as e:
-        console.print(f"[bold red]LLM Error:[/bold red] {e}")
+        if _is_api_key_error(e):
+            _show_api_key_help(e)
+        else:
+            console.print(f"[bold red]LLM Error:[/bold red] {e}")
         raise typer.Exit(1)
 
     entities = inferred.get("entities", [])
@@ -230,7 +271,10 @@ def query(
             mode="read",
         )
     except LLMError as e:
-        console.print(f"[bold red]LLM Error:[/bold red] {e}")
+        if _is_api_key_error(e):
+            _show_api_key_help(e)
+        else:
+            console.print(f"[bold red]LLM Error:[/bold red] {e}")
         raise typer.Exit(1)
 
     cypher = sanitize_cypher(raw_cypher)
@@ -325,6 +369,89 @@ def export(
         console.print(f"[green]Exported to {path}[/green]")
     else:
         out_console.print(json_str)
+
+
+@app.command()
+def stats(
+    output: OutputFormat = typer.Option(
+        OutputFormat.human, "--output", "-o", help="Output format."
+    ),
+) -> None:
+    """Show graph memory statistics."""
+    from clawgraph.db import GraphDB
+
+    db = GraphDB()
+    db.ensure_base_schema()
+
+    entity_count = db.get_entity_count()
+    rel_count = db.get_relationship_count()
+    label_dist = db.get_label_distribution()
+    rel_type_dist = db.get_relationship_type_distribution()
+
+    data = {
+        "entity_count": entity_count,
+        "relationship_count": rel_count,
+        "label_distribution": {
+            row["label"]: int(row["count"]) for row in label_dist
+        },
+        "relationship_type_distribution": {
+            row["type"]: int(row["count"]) for row in rel_type_dist
+        },
+    }
+
+    if output == OutputFormat.json:
+        _output(data, output)
+        return
+
+    # Human output
+    console.print(f"[bold]Entities:[/bold] {entity_count}")
+    console.print(f"[bold]Relationships:[/bold] {rel_count}")
+
+    if label_dist:
+        table = Table(title="Label Distribution")
+        table.add_column("Label", style="cyan")
+        table.add_column("Count", style="green", justify="right")
+        for row in label_dist:
+            table.add_row(str(row["label"]), str(row["count"]))
+        out_console.print(table)
+
+    if rel_type_dist:
+        table = Table(title="Relationship Type Distribution")
+        table.add_column("Type", style="cyan")
+        table.add_column("Count", style="green", justify="right")
+        for row in rel_type_dist:
+            table.add_row(str(row["type"]), str(row["count"]))
+        out_console.print(table)
+
+
+@app.command()
+def clear(
+    output: OutputFormat = typer.Option(
+        OutputFormat.human, "--output", "-o", help="Output format."
+    ),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt."),
+) -> None:
+    """Clear all entities and relationships from the database."""
+    from clawgraph.db import GraphDB
+
+    if not yes:
+        typer.confirm(
+            "This will delete ALL entities and relationships. Continue?",
+            abort=True,
+        )
+
+    db = GraphDB()
+    db.ensure_base_schema()
+    result = db.clear_all()
+
+    if output == OutputFormat.json:
+        _output({"status": "ok", **result}, output)
+        return
+
+    console.print(
+        f"[green]Cleared {result['entities_deleted']} entities "
+        f"and {result['relationships_deleted']} relationships.[/green]"
+    )
 
 
 @app.command()

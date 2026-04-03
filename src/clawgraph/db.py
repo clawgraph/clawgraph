@@ -145,6 +145,62 @@ class GraphDB:
             "MATCH (a:Entity)-[r:Relates]->(b:Entity) RETURN a.name, r.type, b.name"
         )
 
+    def get_entity_count(self) -> int:
+        """Get the total number of entities."""
+        if not self.has_node_table("Entity"):
+            return 0
+        rows = self.execute("MATCH (e:Entity) RETURN count(e) AS cnt")
+        return int(rows[0]["cnt"]) if rows else 0
+
+    def get_relationship_count(self) -> int:
+        """Get the total number of relationships."""
+        if not self.has_rel_table("Relates"):
+            return 0
+        rows = self.execute(
+            "MATCH ()-[r:Relates]->() RETURN count(r) AS cnt"
+        )
+        return int(rows[0]["cnt"]) if rows else 0
+
+    def get_label_distribution(self) -> list[dict[str, Any]]:
+        """Get entity count grouped by label.
+
+        Returns:
+            List of dicts with 'label' and 'count' keys.
+        """
+        if not self.has_node_table("Entity"):
+            return []
+        return self.execute(
+            "MATCH (e:Entity) RETURN e.label AS label, count(e) AS count "
+            "ORDER BY count DESC"
+        )
+
+    def get_relationship_type_distribution(self) -> list[dict[str, Any]]:
+        """Get relationship count grouped by type.
+
+        Returns:
+            List of dicts with 'type' and 'count' keys.
+        """
+        if not self.has_rel_table("Relates"):
+            return []
+        return self.execute(
+            "MATCH ()-[r:Relates]->() RETURN r.type AS type, count(r) AS count "
+            "ORDER BY count DESC"
+        )
+
+    def clear_all(self) -> dict[str, int]:
+        """Delete all entities and relationships.
+
+        Returns:
+            Dict with counts of deleted entities and relationships.
+        """
+        entity_count = self.get_entity_count()
+        rel_count = self.get_relationship_count()
+
+        if self.has_node_table("Entity"):
+            self.execute("MATCH (e:Entity) DETACH DELETE e")
+
+        return {"entities_deleted": entity_count, "relationships_deleted": rel_count}
+
     def close(self) -> None:
         """Close the database connection and release file locks."""
         if hasattr(self, "_conn"):
