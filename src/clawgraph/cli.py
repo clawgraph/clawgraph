@@ -328,6 +328,109 @@ def export(
 
 
 @app.command()
+def shell(
+    model: str | None = typer.Option(
+        None, "--model", "-m", help="Override LLM model."
+    ),
+) -> None:
+    """Start an interactive REPL shell for ClawGraph."""
+    from clawgraph.memory import Memory
+
+    console.print(
+        Panel(
+            "[bold]ClawGraph Interactive Shell[/bold]\n"
+            "Type a fact to add it, prefix with [cyan]?[/cyan] to query.\n"
+            "Commands: [green]/export[/green] [green]/stats[/green] "
+            "[green]/ontology[/green] [green]/clear[/green] "
+            "[green]/quit[/green] (or [green]/q[/green])",
+            border_style="blue",
+        )
+    )
+
+    mem = Memory(model=model)
+
+    while True:
+        try:
+            line = console.input("[bold green]clawgraph>[/bold green] ")
+        except (EOFError, KeyboardInterrupt):
+            console.print("\n[dim]Goodbye![/dim]")
+            break
+
+        line = line.strip()
+        if not line:
+            continue
+
+        if line.lower() in ("/quit", "/exit", "/q"):
+            console.print("[dim]Goodbye![/dim]")
+            break
+
+        if line.lower() == "/export":
+            data = mem.export()
+            out_console.print_json(json.dumps(data, indent=2))
+            continue
+
+        if line.lower() == "/ontology":
+            ont = mem.get_ontology()
+            context = ont.to_context_string()
+            if context == "No ontology defined yet.":
+                console.print("[dim]No ontology defined yet.[/dim]")
+            else:
+                out_console.print(
+                    Panel(context, title="Ontology", border_style="blue")
+                )
+            continue
+
+        if line.lower() == "/stats":
+            ents = mem.entities()
+            rels = mem.relationships()
+            console.print(f"[bold]Entities:[/bold] {len(ents)}")
+            console.print(f"[bold]Relationships:[/bold] {len(rels)}")
+            continue
+
+        if line.lower() == "/clear":
+            ont = mem.get_ontology()
+            ont.clear()
+            console.print("[green]Ontology cleared.[/green]")
+            continue
+
+        if line.startswith("?"):
+            question = line[1:].strip()
+            if not question:
+                console.print("[yellow]Please provide a question after ?[/yellow]")
+                continue
+            try:
+                rows = mem.query(question)
+                if not rows:
+                    console.print("[yellow]No results found.[/yellow]")
+                else:
+                    table = Table(title="Query Results")
+                    columns = list(rows[0].keys())
+                    for col in columns:
+                        table.add_column(col, style="cyan")
+                    for row in rows:
+                        table.add_row(*[str(row.get(c, "")) for c in columns])
+                    out_console.print(table)
+            except Exception as e:
+                console.print(f"[bold red]Error:[/bold red] {e}")
+            continue
+
+        # Default: add as a fact
+        try:
+            result = mem.add(line)
+            if result.ok:
+                console.print(
+                    f"[green]Added:[/green] {len(result.entities)} entities, "
+                    f"{len(result.relationships)} relationships"
+                )
+            else:
+                console.print(
+                    f"[yellow]Partial:[/yellow] {len(result.errors)} error(s)"
+                )
+        except Exception as e:
+            console.print(f"[bold red]Error:[/bold red] {e}")
+
+
+@app.command()
 def config(
     key: str | None = typer.Argument(None, help="Config key (e.g., llm.model)."),
     value: str | None = typer.Argument(None, help="Config value to set."),
