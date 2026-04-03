@@ -145,6 +145,65 @@ class GraphDB:
             "MATCH (a:Entity)-[r:Relates]->(b:Entity) RETURN a.name, r.type, b.name"
         )
 
+    def delete_entity(self, name: str) -> bool:
+        """Delete an entity and all its relationships (cascade).
+
+        Args:
+            name: The entity name (primary key).
+
+        Returns:
+            True if the entity existed and was deleted, False if not found.
+        """
+        if not self.has_node_table("Entity"):
+            return False
+
+        existing = self.execute(
+            "MATCH (e:Entity {name: $name}) RETURN e.name",
+            {"name": name},
+        )
+        if not existing:
+            return False
+
+        self.execute(
+            "MATCH (e:Entity {name: $name}) DETACH DELETE e",
+            {"name": name},
+        )
+        return True
+
+    def delete_relationship(
+        self,
+        from_name: str,
+        to_name: str,
+        rel_type: str,
+    ) -> bool:
+        """Delete a specific relationship between two entities.
+
+        Args:
+            from_name: Source entity name.
+            to_name: Target entity name.
+            rel_type: Relationship type (e.g., 'WORKS_AT').
+
+        Returns:
+            True if the relationship existed and was deleted, False otherwise.
+        """
+        if not self.has_rel_table("Relates"):
+            return False
+
+        existing = self.execute(
+            "MATCH (a:Entity {name: $from_name})-[r:Relates {type: $rel_type}]->"
+            "(b:Entity {name: $to_name}) RETURN r.type",
+            {"from_name": from_name, "to_name": to_name, "rel_type": rel_type},
+        )
+        if not existing:
+            return False
+
+        self.execute(
+            "MATCH (a:Entity {name: $from_name})-[r:Relates {type: $rel_type}]->"
+            "(b:Entity {name: $to_name}) DELETE r",
+            {"from_name": from_name, "to_name": to_name, "rel_type": rel_type},
+        )
+        return True
+
     def close(self) -> None:
         """Close the database connection and release file locks."""
         if hasattr(self, "_conn"):
