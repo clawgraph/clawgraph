@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from copy import deepcopy
 from pathlib import Path
 from typing import Any, cast
 
@@ -151,11 +152,11 @@ class Ontology:
 
     def to_dict(self) -> dict[str, Any]:
         """Return the ontology as a dictionary."""
-        result = self._schema.copy()
+        result = deepcopy(self._schema)
         if self._allowed_labels:
-            result["allowed_labels"] = self._allowed_labels
+            result["allowed_labels"] = list(self._allowed_labels)
         if self._allowed_relationship_types:
-            result["allowed_relationship_types"] = self._allowed_relationship_types
+            result["allowed_relationship_types"] = list(self._allowed_relationship_types)
         return result
 
     def clear(self) -> None:

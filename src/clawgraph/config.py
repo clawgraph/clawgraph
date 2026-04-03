@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -26,13 +27,18 @@ def get_config_path() -> Path:
     return Path.home() / ".clawgraph" / "config.yaml"
 
 
+def _default_config() -> dict[str, Any]:
+    """Return an isolated copy of the default config tree."""
+    return deepcopy(_DEFAULT_CONFIG)
+
+
 def load_config() -> dict[str, Any]:
     """Load configuration from ~/.clawgraph/config.yaml.
 
     Returns:
         Merged config dict (defaults + user overrides).
     """
-    config = _DEFAULT_CONFIG.copy()
+    config = _default_config()
     config_path = get_config_path()
 
     if config_path.exists():
