@@ -126,10 +126,12 @@ class GraphDB:
         )
         self.create_rel_table(
             "Relates", "Entity", "Entity",
-            {"type": "STRING", "created_at": "STRING"},
+            {"type": "STRING", "created_at": "STRING", "properties": "STRING"},
         )
         # Migrate existing DBs: add timestamp columns if missing
         self._migrate_timestamps()
+        # Migrate existing DBs: add properties column if missing
+        self._migrate_properties()
 
     def get_all_entities(self) -> list[dict[str, Any]]:
         """Get all entities in the graph."""
@@ -142,7 +144,8 @@ class GraphDB:
         if not self.has_rel_table("Relates"):
             return []
         return self.execute(
-            "MATCH (a:Entity)-[r:Relates]->(b:Entity) RETURN a.name, r.type, b.name"
+            "MATCH (a:Entity)-[r:Relates]->(b:Entity) "
+            "RETURN a.name, r.type, b.name, r.properties"
         )
 
     def close(self) -> None:
@@ -257,6 +260,22 @@ class GraphDB:
                 self._conn.execute(stmt)
             except Exception:
                 pass  # Column likely already exists
+
+    def _migrate_properties(self) -> None:
+        """Add properties column to Relates table if missing.
+
+        This is a no-op for new databases. For databases created before
+        the properties column was added, it attempts to ALTER TABLE to
+        add the column. Failures are silently ignored (column may already
+        exist). Defaults to '{}' (empty JSON object) so queries never
+        encounter NULL.
+        """
+        try:
+            self._conn.execute(
+                "ALTER TABLE Relates ADD properties STRING DEFAULT '{}'"
+            )
+        except Exception:
+            pass  # Column likely already exists
 
     @staticmethod
     def now_iso() -> str:
