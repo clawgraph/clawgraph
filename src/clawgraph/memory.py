@@ -203,6 +203,14 @@ class Memory:
         """Close the database connection."""
         self._db.close()
 
+    def __enter__(self) -> Memory:
+        """Enter context manager."""
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        """Exit context manager and close database."""
+        self.close()
+
     def save_snapshot(self, output_path: str | Path) -> Path:
         """Save a snapshot of the database as a .tar.gz archive.
 
