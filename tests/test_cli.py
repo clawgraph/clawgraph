@@ -32,7 +32,7 @@ class TestCliAdd:
             payload.update(data)
 
         with (
-            patch("clawgraph.llm.infer_ontology", return_value=inferred),
+            patch("clawgraph.memory.infer_ontology", return_value=inferred),
             patch(
                 "clawgraph.config.load_config",
                 return_value={"db": {"path": ":memory:"}, "llm": {}},
