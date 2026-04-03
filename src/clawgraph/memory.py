@@ -243,28 +243,27 @@ class Memory:
         relationships: list[dict[str, str]],
     ) -> AddResult:
         """Execute inferred entities/relationships against the DB."""
-        cypher = build_merge_cypher(entities, relationships)
+        cypher_lines = [
+            line.strip()
+            for line in build_merge_cypher(entities, relationships).split("\n")
+            if line.strip()
+        ]
 
-        executed: list[str] = []
+        executed = 0
         errors: list[str] = []
+        line_index = 0
 
-        for line in cypher.split("\n"):
-            line = line.strip()
-            if not line:
-                continue
+        for _ in entities:
+            group = cypher_lines[line_index:line_index + 2]
+            line_index += 2
+            if self._execute_cypher_group(group, errors):
+                executed += 1
 
-            clean = sanitize_cypher(line)
-            validation = validate_cypher(clean)
-
-            if not validation:
-                errors.append(f"Validation failed: {clean} — {validation.errors}")
-                continue
-
-            try:
-                self._db.execute(clean)
-                executed.append(clean)
-            except Exception as e:
-                errors.append(f"DB error: {e}")
+        for _ in relationships:
+            group = cypher_lines[line_index:line_index + 2]
+            line_index += 2
+            if self._execute_cypher_group(group, errors):
+                executed += 1
 
         # Update ontology
         for entity in entities:
@@ -281,9 +280,30 @@ class Memory:
         return AddResult(
             entities=entities,
             relationships=relationships,
-            executed=len(executed),
+            executed=executed,
             errors=errors,
         )
+
+    def _execute_cypher_group(self, lines: list[str], errors: list[str]) -> bool:
+        """Execute a logical write composed of one or more Cypher statements."""
+        if not lines:
+            return False
+
+        for line in lines:
+            clean = sanitize_cypher(line)
+            validation = validate_cypher(clean)
+
+            if not validation:
+                errors.append(f"Validation failed: {clean} — {validation.errors}")
+                return False
+
+            try:
+                self._db.execute(clean)
+            except Exception as e:
+                errors.append(f"DB error: {e}")
+                return False
+
+        return True
 
     @staticmethod
     def _find_label(name: str, entities: list[dict[str, str]]) -> str:

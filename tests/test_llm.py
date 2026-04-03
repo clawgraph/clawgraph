@@ -89,13 +89,32 @@ class TestBuildMergeCypher:
         cypher = build_merge_cypher(entities, relationships)
         lines = [line for line in cypher.splitlines() if line.strip()]
 
-        assert len(lines) == len(entities) + len(relationships)
+        assert len(lines) == (2 * len(entities)) + (2 * len(relationships))
 
-        for line in lines[: len(entities)]:
-            assert "created_at" in line
+        entity_merge_lines = [
+            line for line in lines if line.startswith("MERGE (e:Entity")
+        ]
+        entity_created_at_lines = [
+            line
+            for line in lines
+            if line.startswith("MATCH (e:Entity") and "created_at" in line
+        ]
+        relationship_merge_lines = [
+            line for line in lines if "MERGE (a)-[r:Relates" in line
+        ]
+        relationship_created_at_lines = [
+            line for line in lines if "WHERE r.created_at" in line
+        ]
+
+        assert len(entity_merge_lines) == len(entities)
+        assert len(entity_created_at_lines) == len(entities)
+        assert len(relationship_merge_lines) == len(relationships)
+        assert len(relationship_created_at_lines) == len(relationships)
+
+        for line in entity_merge_lines:
             assert "updated_at" in line
 
-        for line in lines[len(entities) :]:
+        for line in entity_created_at_lines + relationship_created_at_lines:
             assert "created_at" in line
 
 

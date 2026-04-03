@@ -44,6 +44,31 @@ class TestMemoryAdd:
         assert len(entities) == 1
 
     @patch("clawgraph.llm._get_client")
+    def test_add_preserves_created_at_on_repeat(self, mock_get_client: MagicMock) -> None:
+        json_resp = '{"entities": [{"name": "John", "label": "Person"}], "relationships": []}'
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock(message=MagicMock(content=json_resp))]
+        mock_client.chat.completions.create.return_value = mock_response
+        mock_get_client.return_value = mock_client
+
+        first_ts = "2026-04-03T00:00:00+00:00"
+        second_ts = "2026-04-03T00:00:01+00:00"
+
+        mem = Memory(db_path=":memory:")
+        with patch("clawgraph.db.GraphDB.now_iso", side_effect=[first_ts, second_ts]):
+            mem.add("John is a person")
+            mem.add("John is a person")
+
+        rows = mem._db.execute(
+            "MATCH (e:Entity {name: 'John'}) RETURN e.created_at, e.updated_at"
+        )
+
+        assert len(rows) == 1
+        assert rows[0]["e.created_at"] == first_ts
+        assert rows[0]["e.updated_at"] == second_ts
+
+    @patch("clawgraph.llm._get_client")
     def test_entities_and_relationships(self, mock_get_client: MagicMock) -> None:
         json_resp = '{"entities": [{"name": "A", "label": "Person"}, {"name": "B", "label": "Person"}], "relationships": [{"from": "A", "to": "B", "type": "KNOWS"}]}'
         mock_client = MagicMock()

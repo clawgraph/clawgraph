@@ -85,8 +85,8 @@ def sanitize_cypher(cypher: str) -> str:
         lines = cleaned.split("\n")
         # Remove first line (```cypher or ```)
         lines = lines[1:]
-        # Remove last line if it's ```
-        if lines and lines[-1].strip() == "```":
+        # Remove last line if it's a closing fence, even with trailing semicolons
+        if lines and lines[-1].strip().startswith("```"):
             lines = lines[:-1]
         cleaned = "\n".join(lines).strip()
 

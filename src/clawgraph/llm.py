@@ -278,7 +278,12 @@ def build_merge_cypher(entities: list[dict[str, str]], relationships: list[dict[
         label = entity.get("label", "Unknown").replace("'", "\\'")
         lines.append(
             f"MERGE (e:Entity {{name: '{name}'}}) "
-            f"SET e.label = '{label}', e.created_at = '{now}', e.updated_at = '{now}';"
+            f"SET e.label = '{label}', e.updated_at = '{now}';"
+        )
+        lines.append(
+            f"MATCH (e:Entity {{name: '{name}'}}) "
+            f"WHERE e.created_at IS NULL OR e.created_at = '' "
+            f"SET e.created_at = '{now}';"
         )
 
     for rel in relationships:
@@ -287,7 +292,12 @@ def build_merge_cypher(entities: list[dict[str, str]], relationships: list[dict[
         rel_type = rel.get("type", "RELATED_TO").replace("'", "\\'")
         lines.append(
             f"MATCH (a:Entity {{name: '{from_name}'}}), (b:Entity {{name: '{to_name}'}}) "
-            f"MERGE (a)-[r:Relates {{type: '{rel_type}'}}]->(b) "
+            f"MERGE (a)-[r:Relates {{type: '{rel_type}'}}]->(b);"
+        )
+        lines.append(
+            f"MATCH (a:Entity {{name: '{from_name}'}})-[r:Relates {{type: '{rel_type}'}}]->"
+            f"(b:Entity {{name: '{to_name}'}}) "
+            f"WHERE r.created_at IS NULL OR r.created_at = '' "
             f"SET r.created_at = '{now}';"
         )
 
