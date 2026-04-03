@@ -270,6 +270,44 @@ def query(
 
 
 @app.command()
+def recall(
+    context: str = typer.Argument(
+        ..., help="Context describing what the agent is working on."
+    ),
+    max_tokens: int = typer.Option(
+        2000, "--max-tokens", "-t", help="Approximate token budget for output."
+    ),
+    output: OutputFormat = typer.Option(
+        OutputFormat.human, "--output", "-o", help="Output format."
+    ),
+    model: str | None = typer.Option(
+        None, "--model", "-m", help="Override LLM model."
+    ),
+) -> None:
+    """Recall relevant knowledge for context injection into agent prompts."""
+    from clawgraph.memory import Memory
+
+    console.print(f"[bold blue]Recalling context for:[/bold blue] {context}")
+
+    try:
+        mem = Memory(model=model)
+        result = mem.recall(context, max_tokens=max_tokens)
+    except Exception as e:
+        console.print(f"[bold red]Error:[/bold red] {e}")
+        raise typer.Exit(1)
+
+    if output == OutputFormat.json:
+        _output({"context": context, "max_tokens": max_tokens, "recall": result}, output)
+        return
+
+    # Human output
+    if not result:
+        console.print("[yellow]No relevant knowledge found.[/yellow]")
+    else:
+        out_console.print(Panel(result, title="Recalled Knowledge", border_style="green"))
+
+
+@app.command()
 def ontology(
     output: OutputFormat = typer.Option(
         OutputFormat.human, "--output", "-o", help="Output format."

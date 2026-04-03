@@ -145,6 +145,96 @@ class GraphDB:
             "MATCH (a:Entity)-[r:Relates]->(b:Entity) RETURN a.name, r.type, b.name"
         )
 
+    def get_neighborhood(
+        self, entity_name: str, hops: int = 2
+    ) -> dict[str, Any]:
+        """Get the neighborhood subgraph around an entity within N hops.
+
+        Traverses outgoing and incoming relationships up to ``hops``
+        distance, collecting all connected entities and relationships.
+
+        Args:
+            entity_name: The name of the central entity.
+            hops: Maximum traversal depth (1 or 2). Clamped to [1, 2].
+
+        Returns:
+            Dict with 'entity' (the center node or None), 'entities'
+            (list of neighbor dicts), and 'relationships' (list of
+            relationship dicts found within the hop range).
+        """
+        result: dict[str, Any] = {
+            "entity": None,
+            "entities": [],
+            "relationships": [],
+        }
+
+        if not self.has_node_table("Entity") or not self.has_rel_table("Relates"):
+            return result
+
+        hops = max(1, min(hops, 2))
+
+        # Fetch the center entity
+        center = self.execute(
+            "MATCH (e:Entity {name: $name}) RETURN e.name, e.label",
+            {"name": entity_name},
+        )
+        if not center:
+            return result
+        result["entity"] = center[0]
+
+        seen_entities: set[str] = set()
+        seen_rels: set[tuple[str, str, str]] = set()
+
+        def _collect_direct(name: str) -> list[str]:
+            """Collect direct (1-hop) neighbors of the given entity."""
+            new_neighbors: list[str] = []
+
+            def _add_rel(row: dict[str, Any]) -> None:
+                rel_key = (row["a.name"], row["r.type"], row["b.name"])
+                if rel_key not in seen_rels:
+                    seen_rels.add(rel_key)
+                    result["relationships"].append(
+                        {"a.name": row["a.name"], "r.type": row["r.type"], "b.name": row["b.name"]}
+                    )
+
+            # Outgoing relationships
+            out_rows = self.execute(
+                "MATCH (a:Entity {name: $name})-[r:Relates]->(b:Entity) "
+                "RETURN a.name, r.type, b.name, b.label",
+                {"name": name},
+            )
+            for row in out_rows:
+                _add_rel(row)
+                if row["b.name"] not in seen_entities and row["b.name"] != entity_name:
+                    seen_entities.add(row["b.name"])
+                    result["entities"].append({"e.name": row["b.name"], "e.label": row["b.label"]})
+                    new_neighbors.append(row["b.name"])
+
+            # Incoming relationships
+            in_rows = self.execute(
+                "MATCH (a:Entity)-[r:Relates]->(b:Entity {name: $name}) "
+                "RETURN a.name, r.type, b.name, a.label",
+                {"name": name},
+            )
+            for row in in_rows:
+                _add_rel(row)
+                if row["a.name"] not in seen_entities and row["a.name"] != entity_name:
+                    seen_entities.add(row["a.name"])
+                    result["entities"].append({"e.name": row["a.name"], "e.label": row["a.label"]})
+                    new_neighbors.append(row["a.name"])
+
+            return new_neighbors
+
+        # Hop 1: direct neighbors of the center entity
+        hop1_neighbors = _collect_direct(entity_name)
+
+        # Hop 2: neighbors of hop-1 neighbors
+        if hops >= 2:
+            for neighbor in hop1_neighbors:
+                _collect_direct(neighbor)
+
+        return result
+
     def close(self) -> None:
         """Close the database connection and release file locks."""
         if hasattr(self, "_conn"):
