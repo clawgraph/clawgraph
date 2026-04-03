@@ -43,3 +43,5 @@ agent-testing-plan.md
 docs/launch-plan.md
 docs/solver-exploration.md
 secure.md
+lobstergym/reports/debug-output.txt
+rust/target/

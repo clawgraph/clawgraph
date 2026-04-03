@@ -256,24 +256,20 @@ def export(
     ),
 ) -> None:
     """Export the graph memory to JSON."""
-    from clawgraph.db import GraphDB
+    from clawgraph.memory import Memory
 
-    db = GraphDB()
-    entities = db.get_all_entities()
-    relationships = db.get_all_relationships()
-
-    data = {
-        "entities": entities,
-        "relationships": relationships,
-    }
+    mem = Memory()
+    data = mem.export()
 
     json_str = json.dumps(data, indent=2)
 
     if path:
         path.write_text(json_str, encoding="utf-8")
         console.print(f"[green]Exported to {path}[/green]")
+    elif output == OutputFormat.json:
+        _output(data, output)
     else:
-        out_console.print(json_str)
+        out_console.print_json(json_str)
 
 
 @app.command()
