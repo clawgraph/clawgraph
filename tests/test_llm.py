@@ -1,5 +1,6 @@
 """Tests for LLM integration layer."""
 
+import pytest
 from unittest.mock import MagicMock, patch
 
 from clawgraph.llm import LLMError, build_merge_cypher
@@ -49,6 +50,48 @@ class TestBuildMergeCypher:
         assert "updated_at" in cypher
         # Timestamp should be ISO format with T separator
         assert "T" in cypher
+
+
+class TestEntityNameValidation:
+    """Security tests for entity name validation in build_merge_cypher."""
+
+    def test_rejects_empty_name(self) -> None:
+        with pytest.raises(LLMError, match="Empty entity name"):
+            build_merge_cypher([{"name": "", "label": "Person"}], [])
+
+    def test_rejects_whitespace_only_name(self) -> None:
+        with pytest.raises(LLMError, match="Empty entity name"):
+            build_merge_cypher([{"name": "   ", "label": "Person"}], [])
+
+    def test_rejects_too_long_name(self) -> None:
+        with pytest.raises(LLMError, match="exceeds"):
+            build_merge_cypher([{"name": "A" * 501, "label": "Person"}], [])
+
+    def test_rejects_injection_characters(self) -> None:
+        with pytest.raises(LLMError, match="Unsafe characters"):
+            build_merge_cypher([{"name": "John; DROP TABLE", "label": "Person"}], [])
+
+    def test_rejects_curly_braces(self) -> None:
+        with pytest.raises(LLMError, match="Unsafe characters"):
+            build_merge_cypher([{"name": "John{}", "label": "Person"}], [])
+
+    def test_allows_unicode_names(self) -> None:
+        cypher = build_merge_cypher([{"name": "André", "label": "Person"}], [])
+        assert "André" in cypher
+
+    def test_allows_hyphenated_names(self) -> None:
+        cypher = build_merge_cypher([{"name": "Mary-Jane", "label": "Person"}], [])
+        assert "Mary-Jane" in cypher
+
+    def test_allows_dotted_names(self) -> None:
+        cypher = build_merge_cypher([{"name": "Dr. Smith", "label": "Person"}], [])
+        assert "Dr. Smith" in cypher
+
+    def test_rejects_empty_relationship_source(self) -> None:
+        entities = [{"name": "John", "label": "Person"}]
+        rels = [{"from": "", "to": "John", "type": "KNOWS"}]
+        with pytest.raises(LLMError, match="Empty relationship source"):
+            build_merge_cypher(entities, rels)
 
 
 class TestGenerateCypher:

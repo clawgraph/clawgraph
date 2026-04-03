@@ -4,11 +4,19 @@ from __future__ import annotations
 
 import re
 
+# Maximum query length (chars) to prevent abuse
+_MAX_QUERY_LENGTH = 5000
+
 # Patterns that should never appear in generated Cypher
 _DANGEROUS_PATTERNS: list[tuple[str, str]] = [
     (r"\bDROP\b", "DROP statements are not allowed"),
     (r"\bDELETE\s+DATABASE\b", "Database deletion is not allowed"),
     (r"\bCALL\s+dbms\b", "DBMS calls are not allowed"),
+    (r"\bLOAD\b", "LOAD statements are not allowed"),
+    (r"\bCOPY\b", "COPY statements are not allowed"),
+    (r"\bEXPORT\b", "EXPORT statements are not allowed"),
+    (r"//", "Single-line comments are not allowed"),
+    (r"/\*", "Block comments are not allowed"),
 ]
 
 # Basic structural patterns that valid Cypher should match
@@ -38,6 +46,14 @@ def validate_cypher(cypher: str) -> CypherValidationResult:
         return CypherValidationResult(is_valid=False, errors=["Empty query"])
 
     cleaned = cypher.strip()
+
+    # Check query length
+    if len(cleaned) > _MAX_QUERY_LENGTH:
+        errors.append(f"Query exceeds maximum length of {_MAX_QUERY_LENGTH} characters")
+
+    # Check for embedded newlines/carriage returns that could bypass pattern matching
+    if "\r" in cleaned:
+        errors.append("Carriage returns are not allowed in queries")
 
     # Check for dangerous patterns
     for pattern, message in _DANGEROUS_PATTERNS:
