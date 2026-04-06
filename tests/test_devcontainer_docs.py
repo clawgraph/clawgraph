@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+import tomllib
+
 
 def test_openclaw_gateway_service_uses_bootstrap_script() -> None:
     compose_path = Path(".devcontainer/docker-compose.test.yml")
@@ -96,6 +98,34 @@ def test_clawgraph_skill_requires_high_confidence_fact_storage() -> None:
     assert "Preserve the user's phrasing when possible" in skill_text
     assert "OpenAI-compatible APIs today" in skill_text
     assert "LiteLLM" not in skill_text
+
+
+def test_clawgraph_skill_is_ready_for_clawhub_distribution() -> None:
+    skill_path = Path("skills/clawgraph/SKILL.md")
+    pyproject_path = Path("pyproject.toml")
+
+    skill_text = skill_path.read_text(encoding="utf-8")
+    project_version = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))["project"]["version"]
+
+    assert "homepage: https://github.com/clawgraph/clawgraph" in skill_text
+    assert '"emoji": "🧠"' in skill_text
+    assert '"kind": "uv"' in skill_text
+    assert f'"package": "clawgraph=={project_version}"' in skill_text
+    assert '"kind": "node"' not in skill_text
+
+
+def test_release_version_is_consistent() -> None:
+    pyproject_path = Path("pyproject.toml")
+    init_path = Path("src/clawgraph/__init__.py")
+    skill_path = Path("skills/clawgraph/SKILL.md")
+
+    project_version = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))["project"]["version"]
+    init_text = init_path.read_text(encoding="utf-8")
+    skill_text = skill_path.read_text(encoding="utf-8")
+
+    assert f'__version__ = "{project_version}"' in init_text
+    assert f"version: {project_version}" in skill_text
+    assert f'"package": "clawgraph=={project_version}"' in skill_text
 
 
 def test_main_readme_includes_verified_openclaw_walkthrough() -> None:
