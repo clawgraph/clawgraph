@@ -1,8 +1,9 @@
 ---
 name: clawgraph
 description: Automatically store explicit durable user facts and recall them later; do not infer or upgrade weak signals
-version: 0.1.1
-metadata: {"openclaw": {"requires": {"bins": ["clawgraph"], "env": ["OPENAI_API_KEY"]}, "primaryEnv": "OPENAI_API_KEY", "install": [{"id": "pip", "kind": "node", "label": "Install ClawGraph (pip)", "bins": ["clawgraph"]}]}}
+homepage: https://github.com/clawgraph/clawgraph
+version: 0.1.3
+metadata: {"openclaw": {"emoji": "🧠", "requires": {"bins": ["clawgraph"], "env": ["OPENAI_API_KEY"]}, "primaryEnv": "OPENAI_API_KEY", "install": [{"id": "uv", "kind": "uv", "package": "clawgraph==0.1.3", "label": "Install ClawGraph (uv)", "bins": ["clawgraph"]}]}}
 tags:
   - memory
   - knowledge-graph
