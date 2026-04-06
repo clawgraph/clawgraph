@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   # ClawGraph unit tests (no API key needed)
   test-bed:
@@ -36,7 +34,7 @@ services:
         clawgraph add 'Bob manages the design team at Acme' &&
         clawgraph query 'Who works at Acme?' --output json &&
         clawgraph export --output json &&
-        clawgraph ontology show &&
+        clawgraph ontology &&
         echo '=== Integration tests complete ==='
       "
 
@@ -49,43 +47,13 @@ services:
       - "18789:18789"
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENCLAW_GATEWAY_TOKEN=${OPENCLAW_GATEWAY_TOKEN:-lobstergym-dev-token}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
     volumes:
       - ..:/workspace:cached
       - openclaw-home:/root/.openclaw
     working_dir: /workspace
-    command: >
-      bash -c "
-        echo '=== Setting up OpenClaw with ClawGraph skill ===' &&
-        mkdir -p /root/.openclaw/workspace/skills &&
-        cp -r /workspace/skills/clawgraph /root/.openclaw/workspace/skills/ &&
-        pip install -e /workspace &&
-        cat > /root/.openclaw/openclaw.json << 'CONF'
-        {
-              "gateway": {
-                "mode": "local",
-                "bind": "lan",
-                "controlUi": {
-                  "enabled": true,
-                  "allowedOrigins": [
-                    "http://localhost:18789",
-                    "http://127.0.0.1:18789"
-                  ]
-                }
-              },
-              "agents": {
-                "defaults": {
-                  "model": {
-                    "primary": "openai/gpt-5-mini"
-                  }
-                }
-              }
-        }
-        CONF
-        echo '=== Starting OpenClaw gateway on port 18789 ===' &&
-        echo 'WebChat/Control UI: http://127.0.0.1:18789/' &&
-        openclaw gateway --bind lan --port 18789 --verbose
-      "
+    command: ["bash", "/workspace/.devcontainer/start-openclaw-gateway.sh"]
 
   # Send a message to the running OpenClaw agent and inspect the response
   # Usage: docker compose -f .devcontainer/docker-compose.test.yml run openclaw-test
@@ -96,6 +64,7 @@ services:
     network_mode: "service:openclaw-gateway"
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENCLAW_GATEWAY_TOKEN=${OPENCLAW_GATEWAY_TOKEN:-lobstergym-dev-token}
     volumes:
       - ..:/workspace:cached
       - openclaw-home:/root/.openclaw
@@ -106,13 +75,10 @@ services:
         echo '=== OpenClaw + ClawGraph Agent Test ==='
         pip install -e '.[dev]'
         echo ''
-        echo 'Step 1: Ask agent to store a fact via ClawGraph skill'
-        openclaw agent --message "Use your ClawGraph memory skill to store: Alice is a data scientist at Google"
+        echo 'Step 1: Use an explicit ClawGraph storage control prompt'
+        openclaw agent --to +15555550123 --thinking minimal --message "Use your ClawGraph memory skill to store exactly these facts: Alice works at Google. Alice is learning Rust. Alice is planning an agent-memory demo for later this week."
         echo ''
-        echo 'Step 2: Ask agent to recall from ClawGraph'
-        openclaw agent --message "Use your ClawGraph memory skill to query: Who works at Google?"
-        echo ''
-        echo 'Step 3: Inspect ClawGraph DB directly'
+        echo 'Step 2: Inspect ClawGraph DB directly'
         clawgraph export --output json
         echo ''
         echo '=== Test complete ==='

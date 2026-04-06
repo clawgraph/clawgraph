@@ -112,6 +112,57 @@ mem.export()          # full graph + ontology as dict
 
 For agents, initialize `Memory()` once and reuse it — the DB connection and ontology are kept warm across calls.
 
+## OpenClaw Walkthrough
+
+If you want to verify the OpenClaw integration the way a first-time installer would, use the Dockerized devcontainer stack in this repo.
+
+This walkthrough uses a deliberate model split:
+
+- OpenClaw runs on `gpt-5.4`
+- ClawGraph extraction uses `gpt-5.4-mini`
+
+Prerequisites:
+
+- Docker is running
+- `OPENAI_API_KEY` is set in the repo `.env`
+
+Start the OpenClaw gateway:
+
+```bash
+docker compose -p ocwalk -f .devcontainer/docker-compose.test.yml up -d openclaw-gateway
+```
+
+Then send a normal conversational message. The point of this test is to see whether the agent decides to use ClawGraph naturally, not because you explicitly told it which skill to call.
+
+```bash
+docker compose -p ocwalk -f .devcontainer/docker-compose.test.yml exec openclaw-gateway \
+  openclaw agent --local --to +15555550123 --thinking minimal --timeout 120 \
+  --message "Hi, I'm Alice. I work at Google, I'm learning Rust, and I'm planning an agent-memory demo for later this week."
+```
+
+Now ask the agent to recall what it knows:
+
+```bash
+docker compose -p ocwalk -f .devcontainer/docker-compose.test.yml exec openclaw-gateway \
+  openclaw agent --local --to +15555550123 --thinking minimal --timeout 120 \
+  --message "What do you know about me so far?"
+```
+
+Inspect ClawGraph directly to confirm what was persisted:
+
+```bash
+docker compose -p ocwalk -f .devcontainer/docker-compose.test.yml exec openclaw-gateway \
+  clawgraph export --output json
+```
+
+If you want the browser UI as well, open `http://127.0.0.1:18789/?token=lobstergym-dev-token` after the gateway starts.
+
+Natural OpenClaw auto-storage is still experimental. For a deterministic
+OpenClaw validation path, use the explicit control flow documented in
+`.devcontainer/README.md` and verify persistence with `clawgraph export`.
+
+For a more detailed container-oriented walkthrough, see `.devcontainer/README.md`.
+
 ### Custom Ontology (constrained extraction)
 
 By default ClawGraph lets the LLM choose entity labels and relationship types freely. For domain-specific applications, you can constrain extraction to a fixed schema:
@@ -147,9 +198,28 @@ Constraints are injected into the LLM prompt, so the model will only produce ent
 
 ## Architecture
 
+```mermaid
+flowchart LR
+  Clients[Apps / Agents / Workflows]
+
+  subgraph Core[ClawGraph]
+    Entry[CLI / Python API / OpenClaw skill]
+    Logic[Ontology tracking + Cypher validation]
+    Inspect[Query / Export / Inspection]
+  end
+
+  LLM[OpenAI-compatible LLM]
+  DB[(Local Kuzu DB)]
+
+  Clients --> Entry
+  Entry --> Logic
+  Logic -->|extract / generate Cypher| LLM
+  Logic -->|MERGE / MATCH| DB
+  DB --> Inspect
+  Inspect --> Clients
 ```
-User/Agent → LLM (extracts entities) → Cypher (MERGE) → Kùzu (embedded graph DB)
-```
+
+ClawGraph sits between your application layer and local graph storage. Apps, agents, and automations call ClawGraph through the CLI, Python API, or an agent integration such as an OpenClaw skill. ClawGraph then uses an OpenAI-compatible LLM to extract or query structured facts, validates the generated Cypher, and persists the results in a local Kuzu database.
 
 ClawGraph uses a **generic schema** — all entities are stored as `Entity(name, label)` nodes and all relationships use `Relates(type)` edges. This means the LLM doesn't need to generate table DDL, just extract structured data.
 

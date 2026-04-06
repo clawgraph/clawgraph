@@ -86,7 +86,7 @@ def generate_cypher(
         LLMError: If the LLM call fails or returns empty content.
     """
     config = load_config()
-    model = model or config.get("llm", {}).get("model", "gpt-4o-mini")
+    model = model or config.get("llm", {}).get("model", "gpt-5.4-mini")
     temperature = config.get("llm", {}).get("temperature", 0.0)
 
     system_prompt = _build_write_prompt(ontology_context) if mode == "write" else _build_read_prompt(ontology_context)
@@ -130,7 +130,7 @@ def infer_ontology(
         LLMError: If the LLM call fails or response is not valid JSON.
     """
     config = load_config()
-    model = model or config.get("llm", {}).get("model", "gpt-4o-mini")
+    model = model or config.get("llm", {}).get("model", "gpt-5.4-mini")
 
     system_prompt = (
         "You are a graph ontology designer for a Kùzu embedded graph database.\n"
@@ -203,7 +203,7 @@ def infer_ontology_batch(
         LLMError: If the LLM call fails or response is not valid JSON.
     """
     config = load_config()
-    model = model or config.get("llm", {}).get("model", "gpt-4o-mini")
+    model = model or config.get("llm", {}).get("model", "gpt-5.4-mini")
 
     numbered = "\n".join(f"{i+1}. {s}" for i, s in enumerate(statements))
 

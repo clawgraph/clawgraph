@@ -4,24 +4,39 @@ This directory provides a containerized environment for testing ClawGraph with A
 
 ## Architecture
 
+```mermaid
+flowchart LR
+  subgraph Host[Host Machine]
+    User[User]
+    Browser[Browser UI\n127.0.0.1:18789]
+    Runner[CLI / openclaw-test]
+  end
+
+  subgraph Compose[Docker Compose]
+    Gateway[openclaw-gateway\nOpenClaw agent\nModel: gpt-5.4]
+    Skill[skills/clawgraph/SKILL.md\nmemory rules + usage guidance]
+    CGConfig[~/.clawgraph/config.yaml\nModel: gpt-5.4-mini]
+    CG[clawgraph CLI / Memory API]
+    Kuzu[(Kuzu embedded DB\n~/.clawgraph/data)]
+  end
+
+  subgraph LLM[OpenAI-compatible API]
+    OpenAI[LLM endpoint]
+  end
+
+  User --> Browser
+  Browser --> Gateway
+  Runner -->|openclaw agent| Gateway
+  Gateway -.loads.-> Skill
+  Gateway -->|decides to store or recall| CG
+  CGConfig --> CG
+  CG -->|extract / query with gpt-5.4-mini| OpenAI
+  CG -->|MERGE / MATCH| Kuzu
+  Runner -->|clawgraph export / query| CG
+  Gateway --> Browser
 ```
-┌─────────────────────────────────────────────────┐
-│  Docker Compose                                 │
-│                                                 │
-│  ┌───────────────────────┐                      │
-│  │  openclaw-gateway     │ ← port 18789         │
-│  │  (OpenClaw agent)     │   WebChat + Control  │
-│  │  + ClawGraph skill    │   UI in browser      │
-│  └──────────┬────────────┘                      │
-│             │ shared network                    │
-│  ┌──────────▼────────────┐                      │
-│  │  openclaw-test        │                      │
-│  │  (CLI test runner)    │                      │
-│  │  openclaw agent --msg │                      │
-│  │  clawgraph export     │ ← inspect results    │
-│  └───────────────────────┘                      │
-└─────────────────────────────────────────────────┘
-```
+
+In this setup, OpenClaw handles the conversation loop and decides whether memory is useful. When it chooses to persist or recall something, it calls ClawGraph, which uses its own smaller extraction/query model and stores data in local Kuzu files.
 
 ## Prerequisites
 
@@ -52,9 +67,33 @@ export OPENAI_API_KEY=sk-...
 docker compose -f .devcontainer/docker-compose.test.yml up openclaw-gateway
 ```
 
-The gateway prints a token URL. Open `http://127.0.0.1:18789/` in your browser
-to access the **WebChat UI** — you can chat with the agent directly and ask it
-to use ClawGraph.
+The gateway prints the Control UI URL with a token included. By default this is:
+
+```text
+http://127.0.0.1:18789/?token=lobstergym-dev-token
+```
+
+Open that URL in your browser to access the **WebChat UI** and ask the agent to
+work normally.
+
+For a realistic memory test, use normal conversational phrasing instead of telling
+the agent which skill to call. Example:
+
+```text
+Hi, I'm Alice. I work at Google, I'm learning Rust, and I'm planning an agent-memory demo for later this week.
+```
+
+Then ask:
+
+```text
+What do you know about me so far?
+```
+
+Natural agent-decided storage is still experimental. In repeated fresh-stack
+tests, OpenClaw sometimes routes these facts into its own workspace memory flow
+instead of reliably invoking ClawGraph.
+
+For deterministic validation, use an explicit ClawGraph instruction.
 
 In a **second terminal**, run the automated test:
 
@@ -69,18 +108,26 @@ This sends messages to the agent via CLI, then inspects ClawGraph directly.
 ### Option A: WebChat UI (interactive, easiest)
 
 1. Start the gateway: `docker compose ... up openclaw-gateway`
-2. Open `http://127.0.0.1:18789/` in your browser
-3. Paste the gateway token (printed in terminal) into Settings
-4. Chat naturally: "Remember that Alice works at Google"
-5. Then: "What do you know about Alice?"
+2. Open `http://127.0.0.1:18789/?token=lobstergym-dev-token` in your browser
+3. Chat naturally: "Hi, I'm Alice. I work at Google, I'm learning Rust, and I'm planning an agent-memory demo for later this week."
+4. Then: "What do you know about me so far?"
 
 ### Option B: CLI one-shot (scriptable, for CI)
 
 ```bash
 # Send a single message and get the agent's response on stdout
 docker compose -f .devcontainer/docker-compose.test.yml run openclaw-test \
-  bash -c 'openclaw agent --message "Store: Bob is a designer at Netflix"'
+  bash -c 'openclaw agent --to +15555550123 --thinking minimal --message "Use your ClawGraph memory skill to store exactly these facts: Alice works at Google. Alice is learning Rust. Alice is planning an agent-memory demo for later this week."'
 ```
+
+`--to` is required so OpenClaw has a session key for the conversation.
+For the current `openai/gpt-5.4` OpenClaw model path, pass `--thinking minimal`
+so agent turns are accepted consistently. ClawGraph itself uses `gpt-5.4-mini`
+inside the same container.
+
+The bundled `openclaw-test` service uses this explicit control path on purpose so
+the automated validation stays deterministic. It verifies persistence through
+direct `clawgraph export` output rather than a second agent-mediated query.
 
 ### Option C: Inspect ClawGraph directly (verification)
 
