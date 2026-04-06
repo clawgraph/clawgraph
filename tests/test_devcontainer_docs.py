@@ -1,8 +1,15 @@
 """Regression tests for the Docker/OpenClaw walkthrough files."""
 
+import re
 from pathlib import Path
 
-import tomllib
+
+def _read_project_version() -> str:
+    pyproject_text = Path("pyproject.toml").read_text(encoding="utf-8")
+    match = re.search(r'^version = "([^"]+)"$', pyproject_text, re.MULTILINE)
+
+    assert match is not None
+    return match.group(1)
 
 
 def test_openclaw_gateway_service_uses_bootstrap_script() -> None:
@@ -102,10 +109,9 @@ def test_clawgraph_skill_requires_high_confidence_fact_storage() -> None:
 
 def test_clawgraph_skill_is_ready_for_clawhub_distribution() -> None:
     skill_path = Path("skills/clawgraph/SKILL.md")
-    pyproject_path = Path("pyproject.toml")
 
     skill_text = skill_path.read_text(encoding="utf-8")
-    project_version = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))["project"]["version"]
+    project_version = _read_project_version()
 
     assert "homepage: https://github.com/clawgraph/clawgraph" in skill_text
     assert '"emoji": "🧠"' in skill_text
@@ -115,11 +121,10 @@ def test_clawgraph_skill_is_ready_for_clawhub_distribution() -> None:
 
 
 def test_release_version_is_consistent() -> None:
-    pyproject_path = Path("pyproject.toml")
     init_path = Path("src/clawgraph/__init__.py")
     skill_path = Path("skills/clawgraph/SKILL.md")
 
-    project_version = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))["project"]["version"]
+    project_version = _read_project_version()
     init_text = init_path.read_text(encoding="utf-8")
     skill_text = skill_path.read_text(encoding="utf-8")
 
