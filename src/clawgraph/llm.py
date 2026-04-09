@@ -377,3 +377,81 @@ def _build_read_prompt(ontology_context: str) -> str:
 
 class LLMError(Exception):
     """Raised when an LLM operation fails."""
+
+
+def identify_retraction_targets(
+    statement: str,
+    existing_ontology: str = "",
+    model: str | None = None,
+) -> dict[str, Any]:
+    """Use LLM to identify which entities/relationships a statement refers to.
+
+    Given a natural language retraction statement (e.g., "Alice works at Acme"),
+    determine which relationships (and optionally entities) should be removed.
+
+    Args:
+        statement: Natural language statement describing the fact to retract.
+        existing_ontology: Current schema for context.
+        model: LLM model to use.
+
+    Returns:
+        Dict with 'relationships' (list of dicts with from/to/type) and
+        optionally 'entities' (list of entity names to remove).
+
+    Raises:
+        LLMError: If the LLM call fails or response is not valid JSON.
+    """
+    config = load_config()
+    model = model or config.get("llm", {}).get("model", "gpt-4o-mini")
+
+    system_prompt = (
+        "You are a graph memory assistant for a Kùzu embedded graph database.\n"
+        "Given a natural language statement describing a fact, identify which\n"
+        "relationships and/or entities should be REMOVED from the graph.\n\n"
+        "The database uses a GENERIC schema:\n"
+        "  - All entities are stored as Entity nodes with properties: name (STRING, PK), label (STRING)\n"
+        "  - All relationships use Relates with property: type (STRING)\n\n"
+        "Respond with ONLY valid JSON (no markdown fences):\n"
+        "{\n"
+        '  "relationships": [\n'
+        '    {"from": "entity name", "to": "entity name", "type": "WORKS_AT|KNOWS|etc"}\n'
+        "  ],\n"
+        '  "entities": []\n'
+        "}\n\n"
+        "RULES:\n"
+        "- Identify the specific relationship(s) the statement refers to\n"
+        "- Only include entities in the 'entities' list if the statement explicitly\n"
+        "  asks to delete/remove an entity entirely\n"
+        "- Use uppercase for relationship types (e.g., WORKS_AT, KNOWS)\n"
+        "- Be precise: only target what the statement describes\n\n"
+    )
+    if existing_ontology:
+        system_prompt += f"Existing ontology:\n{existing_ontology}\n\n"
+
+    try:
+        client = _get_client()
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": statement},
+            ],
+            temperature=0.0,
+        )
+    except OpenAIError as e:
+        raise LLMError(f"LLM call failed: {e}") from e
+
+    content: str | None = response.choices[0].message.content
+    if not content:
+        raise LLMError("LLM returned empty response for retraction identification")
+
+    cleaned = content.strip()
+    cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
+    cleaned = re.sub(r"\s*```$", "", cleaned)
+
+    try:
+        return cast(dict[str, Any], json.loads(cleaned))
+    except json.JSONDecodeError as e:
+        raise LLMError(
+            f"Failed to parse retraction response: {e}\nRaw: {cleaned}"
+        ) from e
