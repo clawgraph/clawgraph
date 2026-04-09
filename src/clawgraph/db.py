@@ -119,12 +119,17 @@ class GraphDB:
         self.execute(cypher)
 
     def ensure_base_schema(self) -> None:
-        """Ensure the base Entity/Relates schema exists.
+        """Ensure the base Entity/Relates schema and workflow schema exist.
 
         Creates a generic Entity node table and Relates rel table
         that can be used for any graph memory storage.
         Includes created_at/updated_at timestamps on entities and
         created_at on relationships.
+
+        Also creates workflow-related node tables (Workflow, Step, Tool,
+        Application) and relationship tables (HAS_STEP, USED_TOOL, NEXT,
+        ACCESSED_APP). These calls are idempotent — existing tables are
+        left untouched so data in existing DBs is never lost.
         """
         self.create_node_table(
             "Entity",
@@ -137,6 +142,43 @@ class GraphDB:
         )
         # Migrate existing DBs: add timestamp columns if missing
         self._migrate_timestamps()
+
+        # --- Workflow schema ---
+        self.create_node_table(
+            "Workflow",
+            {
+                "name": "STRING",
+                "started_at": "STRING",
+                "finished_at": "STRING",
+                "total_duration_ms": "INT64",
+                "step_count": "INT64",
+                "status": "STRING",
+            },
+        )
+        self.create_node_table(
+            "Step",
+            {
+                "id": "STRING",
+                "tool_name": "STRING",
+                "input_summary": "STRING",
+                "output_summary": "STRING",
+                "duration_ms": "INT64",
+                "status": "STRING",
+                "order_index": "INT64",
+            },
+        )
+        self.create_node_table(
+            "Tool",
+            {"name": "STRING", "description": "STRING"},
+        )
+        self.create_node_table(
+            "Application",
+            {"name": "STRING", "description": "STRING"},
+        )
+        self.create_rel_table("HAS_STEP", "Workflow", "Step")
+        self.create_rel_table("USED_TOOL", "Step", "Tool")
+        self.create_rel_table("NEXT", "Step", "Step")
+        self.create_rel_table("ACCESSED_APP", "Step", "Application")
 
     def get_all_entities(self) -> list[dict[str, Any]]:
         """Get all entities in the graph."""
