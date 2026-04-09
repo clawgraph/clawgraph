@@ -20,6 +20,13 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 
+tools_app = typer.Typer(
+    name="tools",
+    help="Tool-use function definitions for LLM integrations.",
+    no_args_is_help=True,
+)
+app.add_typer(tools_app, name="tools")
+
 console = Console(stderr=True)
 out_console = Console()
 
@@ -305,6 +312,26 @@ def config(
             _output(cfg, output)
         else:
             out_console.print_json(json.dumps(cfg, indent=2))
+
+
+class ToolFormat(str, Enum):
+    """Tool definition output formats."""
+
+    openai = "openai"
+    anthropic = "anthropic"
+
+
+@tools_app.command("export")
+def tools_export(
+    fmt: ToolFormat = typer.Option(
+        ToolFormat.openai, "--format", "-f", help="Tool definition format."
+    ),
+) -> None:
+    """Export ClawGraph operations as LLM tool-use / function-calling definitions."""
+    from clawgraph.tools import get_tool_definitions
+
+    definitions = get_tool_definitions(fmt.value)
+    out_console.print_json(json.dumps(definitions))
 
 
 if __name__ == "__main__":
