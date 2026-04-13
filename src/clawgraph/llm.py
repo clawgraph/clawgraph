@@ -375,5 +375,86 @@ def _build_read_prompt(ontology_context: str) -> str:
     return prompt
 
 
+def identify_relevant_entities(
+    context: str,
+    entity_names: list[str],
+    model: str | None = None,
+) -> list[str]:
+    """Use the LLM to identify which entities are relevant to a context string.
+
+    Args:
+        context: The agent's current context / what it's working on.
+        entity_names: All known entity names in the graph.
+        model: LLM model to use. Defaults to config value.
+
+    Returns:
+        Ordered list of entity names the LLM considers relevant
+        (most relevant first). Returns empty list on LLM failure.
+    """
+    if not entity_names:
+        return []
+
+    config = load_config()
+    model = model or config.get("llm", {}).get("model", "gpt-4o-mini")
+
+    entities_list = "\n".join(f"- {name}" for name in entity_names)
+
+    system_prompt = (
+        "You are a relevance scoring system for a knowledge graph.\n"
+        "Given a context string describing what the user/agent is working on,\n"
+        "and a list of entity names from a knowledge graph, identify which\n"
+        "entities are relevant to the context.\n\n"
+        "Rules:\n"
+        "- Return ONLY a JSON array of entity names that are relevant\n"
+        "- Order them by relevance (most relevant first)\n"
+        "- If nothing is relevant, return an empty array: []\n"
+        "- Do NOT include entities that are clearly unrelated\n"
+        "- Be inclusive — if an entity might be relevant, include it\n"
+        "- Return valid JSON only, no markdown fences or explanation\n"
+    )
+
+    user_msg = (
+        f"Context: {context}\n\n"
+        f"Available entities:\n{entities_list}\n\n"
+        "Which entities are relevant to this context? "
+        "Return a JSON array of entity names, most relevant first."
+    )
+
+    try:
+        client = _get_client()
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_msg},
+            ],
+            temperature=0.0,
+        )
+    except OpenAIError:
+        # Graceful degradation: on LLM failure, return empty list
+        return []
+
+    content: str | None = response.choices[0].message.content
+    if not content:
+        return []
+
+    # Strip code fences if present
+    cleaned = content.strip()
+    cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
+    cleaned = re.sub(r"\s*```$", "", cleaned)
+
+    try:
+        parsed = json.loads(cleaned)
+    except json.JSONDecodeError:
+        return []
+
+    if not isinstance(parsed, list):
+        return []
+
+    # Filter to only names that actually exist in the graph
+    valid_names = set(entity_names)
+    return [name for name in parsed if isinstance(name, str) and name in valid_names]
+
+
 class LLMError(Exception):
     """Raised when an LLM operation fails."""

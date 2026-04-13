@@ -44,6 +44,7 @@ from clawgraph.llm import (
     LLMError,
     build_merge_cypher_groups,
     generate_cypher,
+    identify_relevant_entities,
     infer_ontology,
     infer_ontology_batch,
 )
@@ -179,6 +180,99 @@ class Memory:
             raise LLMError(f"Generated invalid Cypher: {validation.errors}")
 
         return self._db.execute(cypher)
+
+    def recall(self, context: str, max_tokens: int = 2000) -> str:
+        """Recall relevant knowledge for context injection into agent prompts.
+
+        This is the primary API for agent integration. Instead of writing
+        Cypher queries, agents describe what they're working on and get
+        back a pre-formatted block of relevant knowledge.
+
+        Flow:
+            1. Get all entity names from the graph
+            2. Ask the LLM which entities are relevant to the context
+            3. For each relevant entity, traverse 1-2 hops in the graph
+            4. Serialize the subgraph as natural language
+            5. Trim to the token budget
+
+        Args:
+            context: Description of what the agent is working on
+                (e.g., "user is asking about deployment").
+            max_tokens: Approximate token budget for the output.
+                Uses the heuristic of 4 characters ≈ 1 token.
+
+        Returns:
+            Natural language summary of relevant knowledge, suitable for
+            system prompt injection. Returns empty string if nothing
+            relevant is found or the graph is empty.
+        """
+        if not context or not context.strip():
+            return ""
+
+        # Step 1: Get all entity names
+        all_entities = self._db.get_all_entities()
+        if not all_entities:
+            return ""
+
+        entity_names = [e["e.name"] for e in all_entities]
+
+        # Step 2: Identify relevant entities via LLM
+        relevant_names = identify_relevant_entities(
+            context, entity_names, model=self._model
+        )
+
+        if not relevant_names:
+            return ""
+
+        # Step 3: Traverse neighborhood for each relevant entity
+        # Collect unique facts as (source, rel_type, target) tuples
+        seen_facts: set[tuple[str, str, str]] = set()
+        facts: list[tuple[str, str, str, str, str]] = []
+        entity_labels: dict[str, str] = {}
+
+        for name in relevant_names:
+            neighborhood = self._db.get_neighborhood(name, hops=2)
+            center = neighborhood.get("entity")
+            if center:
+                entity_labels[center["e.name"]] = center.get("e.label", "")
+
+            for ent in neighborhood.get("entities", []):
+                entity_labels[ent["e.name"]] = ent.get("e.label", "")
+
+            for rel in neighborhood.get("relationships", []):
+                fact_key = (rel["a.name"], rel["r.type"], rel["b.name"])
+                if fact_key not in seen_facts:
+                    seen_facts.add(fact_key)
+                    a_label = entity_labels.get(rel["a.name"], "")
+                    b_label = entity_labels.get(rel["b.name"], "")
+                    facts.append(
+                        (rel["a.name"], a_label, rel["r.type"], rel["b.name"], b_label)
+                    )
+
+        if not facts:
+            return ""
+
+        # Step 4: Serialize as natural language
+        # Order: facts about entities in relevance order first
+        lines = _serialize_facts(facts, relevant_names)
+
+        # Step 5: Trim to token budget (4 chars ≈ 1 token)
+        max_chars = max_tokens * 4
+        header = "Known facts:\n"
+        result_lines: list[str] = []
+        current_chars = len(header)
+
+        for line in lines:
+            line_chars = len(line) + 1  # +1 for newline
+            if current_chars + line_chars > max_chars:
+                break
+            result_lines.append(line)
+            current_chars += line_chars
+
+        if not result_lines:
+            return ""
+
+        return header + "\n".join(result_lines)
 
     def entities(self) -> list[dict[str, Any]]:
         """Get all entities in the graph."""
@@ -318,6 +412,46 @@ class Memory:
             if entity.get("name") == name:
                 return entity.get("label", "Unknown")
         return "Unknown"
+
+
+def _serialize_facts(
+    facts: list[tuple[str, str, str, str, str]],
+    relevance_order: list[str],
+) -> list[str]:
+    """Serialize relationship facts as natural language lines.
+
+    Facts involving entities earlier in ``relevance_order`` appear first.
+    Each fact is rendered as:
+        ``- {source} ({label}) {rel_type} {target} ({label})``
+
+    Args:
+        facts: List of (source_name, source_label, rel_type, target_name,
+               target_label) tuples.
+        relevance_order: Entity names ordered by relevance (most relevant
+                         first). Used for sorting output.
+
+    Returns:
+        List of formatted fact strings (without the "Known facts:" header).
+    """
+    # Build a relevance rank map for sorting
+    rank: dict[str, int] = {name: i for i, name in enumerate(relevance_order)}
+    high = len(relevance_order)
+
+    def _sort_key(fact: tuple[str, str, str, str, str]) -> int:
+        # Prefer facts that mention higher-ranked entities
+        return min(rank.get(fact[0], high), rank.get(fact[3], high))
+
+    sorted_facts = sorted(facts, key=_sort_key)
+
+    lines: list[str] = []
+    for src_name, src_label, rel_type, tgt_name, tgt_label in sorted_facts:
+        # Format relationship type: WORKS_AT -> works at
+        readable_rel = rel_type.replace("_", " ").lower()
+        src_part = f"{src_name} ({src_label})" if src_label else src_name
+        tgt_part = f"{tgt_name} ({tgt_label})" if tgt_label else tgt_name
+        lines.append(f"- {src_part} {readable_rel} {tgt_part}")
+
+    return lines
 
 
 class AddResult:
