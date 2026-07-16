@@ -1,0 +1,99 @@
+name: LobsterGym External Eval
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Run a single profile smoke check or the full benchmark"
+        required: true
+        type: choice
+        options: [smoke, full]
+        default: smoke
+      profile:
+        description: "Profile to exercise"
+        required: true
+        type: choice
+        options: [clawgraph, default, both]
+        default: clawgraph
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lobstergym-external-eval
+  cancel-in-progress: false
+
+jobs:
+  evaluate:
+    name: LobsterGym ${{ inputs.mode }} (${{ inputs.profile }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify OpenAI credential is configured
+        run: |
+          if [ -z "$OPENAI_API_KEY" ]; then
+            echo "::error title=Missing OPENAI_API_KEY::Configure the repository Actions secret before running this external evaluation."
+            exit 1
+          fi
+
+      - name: Start mock services
+        working-directory: lobstergym
+        run: |
+          docker compose build lobstergym-web lobstergym-api
+          docker compose up -d lobstergym-web lobstergym-api
+
+      - name: Wait for healthy services
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8080/health && curl -sf http://localhost:8090/health; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error title=Mock services unavailable::LobsterGym web or API did not become healthy."
+          exit 1
+
+      - name: Smoke check - ClawGraph profile
+        if: ${{ (inputs.mode == 'smoke' || inputs.mode == 'full') && (inputs.profile == 'clawgraph' || inputs.profile == 'both') }}
+        working-directory: lobstergym
+        run: docker compose run --rm smoke-clawgraph
+
+      - name: Smoke check - Default profile
+        if: ${{ (inputs.mode == 'smoke' || inputs.mode == 'full') && (inputs.profile == 'default' || inputs.profile == 'both') }}
+        working-directory: lobstergym
+        run: docker compose run --rm smoke-default
+
+      - name: Run full ClawGraph evaluation
+        if: ${{ inputs.mode == 'full' && (inputs.profile == 'clawgraph' || inputs.profile == 'both') }}
+        working-directory: lobstergym
+        run: docker compose run --rm eval-clawgraph
+
+      - name: Run full default evaluation
+        if: ${{ inputs.mode == 'full' && (inputs.profile == 'default' || inputs.profile == 'both') }}
+        working-directory: lobstergym
+        run: docker compose run --rm eval-default
+
+      - name: Collect Docker Compose diagnostics
+        if: always()
+        working-directory: lobstergym
+        run: docker compose logs --no-color > docker-compose.log
+
+      - name: Upload evaluation diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lobstergym-${{ inputs.mode }}-${{ inputs.profile }}
+          path: |
+            lobstergym/reports/*.json
+            lobstergym/docker-compose.log
+          if-no-files-found: warn
+
+      - name: Tear down
+        if: always()
+        working-directory: lobstergym
+        run: docker compose down -v
