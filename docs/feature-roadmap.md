@@ -1,7 +1,7 @@
 # ClawGraph — Feature Roadmap
 
-> Last updated: 2026-04-03
-> Status: Active development. v0.1.2 shipped to PyPI. Main now includes post-release security and TDD hardening, with 105 tests in the current suite.
+> Last updated: 2026-09-30
+> Status: Active development. F22 recall and F05 tool definitions are implemented in the current source. Other unchecked roadmap items remain planned; this is not a declaration of v0.2.0 production readiness.
 
 ---
 
@@ -88,6 +88,7 @@ The following shipped in v0.1.0–v0.1.2 and form the foundation for everything 
 
 ### F22: Recall API — Context Injection for Agents ⭐ NEW
 - **Priority:** P0
+- **Status:** Implemented (Python API, CLI, and mocked-LLM regression tests)
 - **Effort:** M
 - **Branch:** `feat/recall-api`
 - **Dependencies:** None (enhanced by F01)
@@ -99,13 +100,18 @@ The following shipped in v0.1.0–v0.1.2 and form the foundation for everything 
   - `src/clawgraph/cli.py` — `clawgraph recall "context"` CLI command
   - `tests/test_recall.py`
 - **Acceptance criteria:**
-  - [ ] `mem.recall("user is asking about deployment")` returns relevant subgraph as formatted text
-  - [ ] Result respects `max_tokens` budget (approximate, truncates least-relevant facts)
-  - [ ] Traverses 1–2 hops from matched entities (e.g., find "deployment" → also returns team, tools, dates)
-  - [ ] Returns empty string gracefully if nothing relevant found
-  - [ ] Output format is agent-friendly (structured text, not raw JSON)
-  - [ ] `clawgraph recall "context" --max-tokens 1000` CLI command works
-  - [ ] Tests with mocked LLM and pre-populated graph
+  - [x] `mem.recall("user is asking about deployment")` returns relevant subgraph as formatted text
+  - [x] Result respects `max_tokens` budget (approximate, truncates least-relevant facts)
+  - [x] Traverses 1–2 hops from matched entities (e.g., find "deployment" → also returns team, tools, dates)
+  - [x] Returns empty string gracefully if nothing relevant found
+  - [x] Output format is agent-friendly (structured text, not raw JSON)
+  - [x] `clawgraph recall "context" --max-tokens 1000` CLI command works
+  - [x] Tests with mocked LLM and pre-populated graph
+- **Current limits:** Budget conservatively counts one UTF-8 output byte per token.
+  Candidate selection sends at most 200 names/labels and 16,000 JSON characters
+  to the configured LLM; lexical shortlisting can miss semantic matches on larger
+  graphs. Traversal uses fixed, validated, parameterized queries rather than
+  model-generated Cypher. No vector retrieval is implied.
 
 ---
 
@@ -245,7 +251,7 @@ The following shipped in v0.1.0–v0.1.2 and form the foundation for everything 
 - **Priority:** P1
 - **Effort:** S
 - **Branch:** `feat/tool-definitions`
-- **Status:** PR #11 open (draft)
+- **Status:** Implemented in current source (the draft PR table above is historical)
 - **Dependencies:** None
 - **Description:** Export ClawGraph operations as OpenAI/Anthropic function-calling tool definitions (JSON Schema). Any LLM-based agent can then call ClawGraph natively without the OpenClaw skill.
 - **Files to create/modify:**
@@ -253,11 +259,16 @@ The following shipped in v0.1.0–v0.1.2 and form the foundation for everything 
   - `src/clawgraph/cli.py` — `clawgraph tools export` command
   - `tests/test_tools.py`
 - **Acceptance criteria:**
-  - [ ] `clawgraph tools export` outputs valid JSON Schema for all operations
-  - [ ] `clawgraph tools export --format openai` outputs OpenAI function-calling format
-  - [ ] `clawgraph tools export --format anthropic` outputs Anthropic tool-use format
-  - [ ] Schema validates against JSON Schema spec
-  - [ ] Tests verify schema structure
+  - [x] `clawgraph tools export` outputs valid JSON Schema for all operations
+  - [x] `clawgraph tools export --format openai` outputs OpenAI function-calling format
+  - [x] `clawgraph tools export --format anthropic` outputs Anthropic tool-use format
+  - [x] Schema validates against JSON Schema spec
+  - [x] Tests verify schema structure
+- **Scope:** Definitions cover `add`, `add_batch`, `query`, `recall`, `entities`,
+  `relationships`, and `export`; lifecycle/configuration methods are not exposed.
+  Export is offline. Argument validation, authorization, and execution dispatch
+  belong to the consuming application. Anthropic schemas do not add a native
+  Anthropic inference backend.
 
 ---
 

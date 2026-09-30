@@ -9,6 +9,8 @@ from typing import Any
 
 import kuzu
 
+from clawgraph.cypher import validate_cypher
+
 
 class GraphDB:
     """Wrapper around Kùzu embedded graph database."""
@@ -151,6 +153,70 @@ class GraphDB:
         return self.execute(
             "MATCH (a:Entity)-[r:Relates]->(b:Entity) RETURN a.name, r.type, b.name"
         )
+
+    def get_neighborhood(
+        self, entity: str, hops: int = 2,
+    ) -> dict[str, list[dict[str, Any]]]:
+        """Get a breadth-first neighborhood, preserving edge direction.
+
+        Args:
+            entity: Exact existing entity name.
+            hops: Maximum undirected traversal distance (one or two).
+
+        Returns:
+            Entities with name/label and relationships with from/type/to.
+            The seed is included even when isolated. Facts are deduplicated.
+
+        Raises:
+            ValueError: If entity is not a string or hops is not one or two.
+        """
+        if not isinstance(entity, str):
+            raise ValueError("entity must be a string")
+        if type(hops) is not int or hops not in (1, 2):
+            raise ValueError("hops must be an integer of 1 or 2")
+        seeds = self._validated_read(
+            "MATCH (e:Entity {name: $name}) RETURN e.name AS name, e.label AS label",
+            {"name": entity},
+        )
+        entities = {row["name"]: row for row in seeds}
+        relationships: dict[tuple[str, str, str], dict[str, Any]] = {}
+        frontier = list(entities)
+        for _ in range(hops):
+            if not frontier:
+                break
+            rows = self._validated_read(
+                "MATCH (a:Entity)-[r:Relates]->(b:Entity) "
+                "WHERE a.name IN $names OR b.name IN $names "
+                "RETURN a.name AS source, a.label AS source_label, "
+                "r.type AS type, b.name AS target, b.label AS target_label "
+                "ORDER BY source, type, target",
+                {"names": frontier},
+            )
+            next_frontier: list[str] = []
+            for row in rows:
+                key = (row["source"], row["type"], row["target"])
+                relationships[key] = {
+                    "from": key[0], "type": key[1], "to": key[2],
+                }
+                for side in ("source", "target"):
+                    name = row[side]
+                    if name not in entities:
+                        entities[name] = {"name": name, "label": row[f"{side}_label"]}
+                        next_frontier.append(name)
+            frontier = sorted(next_frontier)
+        return {
+            "entities": list(entities.values()),
+            "relationships": list(relationships.values()),
+        }
+
+    def _validated_read(
+        self, cypher: str, parameters: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        """Validate fixed read queries before executing bound parameters."""
+        validation = validate_cypher(cypher)
+        if not validation:
+            raise DatabaseError(f"Invalid read query: {validation.errors}")
+        return self.execute(cypher, parameters)
 
     def close(self) -> None:
         """Close the database connection and release file locks."""

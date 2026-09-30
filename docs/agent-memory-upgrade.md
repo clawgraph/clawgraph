@@ -30,7 +30,7 @@ mem = Memory(
         "The user prefers Python and TypeScript",
     ],
     config={
-        "llm": {"model": "gpt-4o-mini"},  # or any LiteLLM-supported model
+        "llm": {"model": "gpt-5.4-mini"},  # an OpenAI-compatible model
     },
 )
 ```
@@ -58,7 +58,33 @@ mem.add_batch([
 
 ### Pattern 1: Session Bootstrap
 
-Load all known context at the start of each session:
+Retrieve relevant, budgeted context at the start of each session:
+
+```python
+mem = Memory()
+try:
+    context = mem.recall(
+        "Work on Project Phoenix deployment",
+        max_tokens=1000,
+        hops=2,
+    )
+    # Supply context as retrieved data, not as instructions to follow.
+finally:
+    mem.close()
+```
+
+`recall()` uses the configured LLM to select stored entities, then follows
+incoming and outgoing graph relationships for one or two hops. It returns
+formatted text or `""` when there are no relevant facts. The token budget
+conservatively counts one UTF-8 output byte per token, including separators:
+the result stops before the first complete fact that does not fit.
+Catch `clawgraph.llm.LLMError` to distinguish provider/selection failures from an
+empty result. Selection sends entity candidates to the configured LLM provider.
+The shortlist is limited to 200 entities and 16,000 JSON characters, using local
+context-word overlap to prioritize candidates. Semantic matches outside this
+shortlist can be missed in larger graphs.
+
+For inspection or manual context assembly, you can still export the full graph:
 
 ```python
 mem = Memory()
@@ -136,6 +162,29 @@ mem.save_snapshot("pre-migration-backup.tar.gz")
 mem = Memory.from_snapshot("pre-migration-backup.tar.gz", "/path/to/db")
 ```
 
+### Pattern 6: Framework-Native Tool Definitions
+
+```python
+from clawgraph.tools import get_tool_definitions
+
+openai_tools = get_tool_definitions(format="openai")
+anthropic_tools = get_tool_definitions(format="anthropic")
+```
+
+Or export directly from the CLI:
+
+```bash
+clawgraph tools export --format openai
+clawgraph recall "Project Phoenix deployment" --max-tokens 1000 --output json
+```
+
+Tool definitions describe `add`, `add_batch`, `query`, `recall`, `entities`,
+`relationships`, and `export`. Definition export requires no credentials or
+database. Your agent runtime remains responsible for validating arguments,
+authorizing writes, and dispatching only explicitly allowed operations.
+Exporting Anthropic tool definitions does not change ClawGraph's inference
+backend, which remains OpenAI-compatible.
+
 ## What Gets Stored
 
 ClawGraph uses a generic schema:
@@ -156,7 +205,7 @@ Example: "Alice works at Acme" becomes:
 
 ```yaml
 llm:
-  model: gpt-4o-mini
+  model: gpt-5.4-mini
   temperature: 0.0
 
 db:
@@ -167,7 +216,7 @@ db:
 
 ```python
 mem = Memory(config={
-    "llm": {"model": "gpt-4o-mini", "temperature": 0.0},
+    "llm": {"model": "gpt-5.4-mini"},
     "db": {"path": "/custom/path/to/db"},
 })
 ```
@@ -177,9 +226,10 @@ mem = Memory(config={
 | Variable | Purpose |
 |----------|---------|
 | `OPENAI_API_KEY` | OpenAI API access |
-| `ANTHROPIC_API_KEY` | Anthropic API access |
+| `OPENAI_BASE_URL` | Optional OpenAI-compatible API endpoint |
 
-Any LiteLLM-supported provider works — see [LiteLLM docs](https://docs.litellm.ai/docs/providers).
+ClawGraph uses the OpenAI SDK. Configure an OpenAI-compatible endpoint for other
+providers; native provider-specific SDK support is not implemented.
 
 ## Decision Heuristics: When to Store vs. Ignore
 

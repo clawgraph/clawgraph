@@ -13,12 +13,15 @@ from rich.panel import Panel
 from rich.table import Table
 
 from clawgraph import __version__
+from clawgraph.tools import ToolFormat, get_tool_definitions
 
 app = typer.Typer(
     name="clawgraph",
     help="Graph-based memory abstraction layer for AI agents.",
     no_args_is_help=True,
 )
+tools_app = typer.Typer(help="Export function definitions for agent integrations.")
+app.add_typer(tools_app, name="tools")
 
 console = Console(stderr=True)
 out_console = Console()
@@ -29,6 +32,20 @@ class OutputFormat(str, Enum):
 
     human = "human"
     json = "json"
+
+
+@tools_app.command("export")
+def tools_export(
+    format: ToolFormat = typer.Option(ToolFormat.json_schema, "--format", help="Tool schema format."),
+    output: OutputFormat = typer.Option(OutputFormat.json, "--output", "-o", help="Output format (both emit JSON)."),
+) -> None:
+    """Print tool definitions as a directly consumable JSON array.
+
+    Args:
+        format: Portable JSON Schema, OpenAI, or Anthropic envelope.
+        output: Accepted for CLI consistency; both modes emit JSON.
+    """
+    out_console.print_json(json.dumps(get_tool_definitions(format)))
 
 
 def _output(data: dict[str, Any], fmt: OutputFormat) -> None:
@@ -216,6 +233,46 @@ def query(
     for row in rows:
         table.add_row(*[str(row.get(c, "")) for c in columns])
     out_console.print(table)
+
+
+@app.command()
+def recall(
+    context: str = typer.Argument(..., help="Agent context to recall relevant facts for."),
+    max_tokens: int = typer.Option(2000, "--max-tokens", help="Conservative approximate token budget."),
+    hops: int = typer.Option(2, "--hops", help="Neighborhood distance: 1 or 2."),
+    model: str | None = typer.Option(None, "--model", "-m", help="Override LLM model."),
+    output: OutputFormat = typer.Option(OutputFormat.human, "--output", "-o", help="Output format."),
+) -> None:
+    """Recall ranked graph facts for agent context injection.
+
+    Args:
+        context: Natural language context for relevance selection.
+        max_tokens: Conservative output budget, counting one UTF-8 byte per token.
+        hops: Maximum traversal distance, one or two.
+        model: Optional LLM model override.
+        output: Human-readable text or a JSON success/error envelope.
+    """
+    from clawgraph.db import DatabaseError
+    from clawgraph.llm import LLMError
+    from clawgraph.memory import Memory
+
+    mem: Memory | None = None
+    try:
+        mem = Memory(model=model)
+        text = mem.recall(context, max_tokens=max_tokens, hops=hops)
+        if output == OutputFormat.json:
+            _output({"status": "ok", "context": text}, output)
+        else:
+            out_console.print(text, markup=False, highlight=False)
+    except (LLMError, DatabaseError, ValueError, OSError, RuntimeError) as exc:
+        if output == OutputFormat.json:
+            _output({"status": "error", "error": str(exc)}, output)
+        else:
+            console.print(f"Recall error: {exc}", markup=False, highlight=False)
+        raise typer.Exit(1) from exc
+    finally:
+        if mem is not None:
+            mem.close()
 
 
 @app.command()

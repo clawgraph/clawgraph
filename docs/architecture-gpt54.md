@@ -1,6 +1,6 @@
 # ClawGraph - Architecture Snapshot
 
-> Last updated: 2026-04-03
+> Last updated: 2026-09-30
 > Scope: current repository shape plus the runtime architecture of the published Python package
 
 This note is a current-state map of the repo as it exists today. It is not a roadmap. It is a description of what is actually wired up now.
@@ -14,7 +14,7 @@ graph TD
     ROOT["clawgraph repo"]
 
     ROOT --> SRC["src/clawgraph<br/>published Python package"]
-    ROOT --> TESTS["tests<br/>105 collected pytest tests"]
+    ROOT --> TESTS["tests<br/>pytest regression + property tests"]
     ROOT --> SKILL["skills/clawgraph/SKILL.md<br/>OpenClaw skill instructions"]
     ROOT --> GYM["lobstergym<br/>evaluation harness + mock services"]
     ROOT --> DOCS["docs<br/>architecture, roadmap, exploration notes"]
@@ -28,6 +28,7 @@ graph TD
     SRC --> ONT["ontology.py<br/>schema tracking"]
     SRC --> CYPHER["cypher.py<br/>validation + sanitization"]
     SRC --> CFG["config.py<br/>YAML config loader"]
+    SRC --> TOOLS["tools.py<br/>JSON Schema + provider tool definitions"]
     SRC --> MAIN["__main__.py / __init__.py"]
 
     GYM --> WEB["web<br/>Flask mock websites"]
@@ -107,6 +108,8 @@ graph LR
 - `memory.py` is the main orchestration layer
 - `db.py` owns Kuzu lifecycle, schema bootstrapping, and snapshot save/load
 - `llm.py` owns extraction and Cypher generation via the OpenAI SDK
+- Recall uses LLM-selected entity names followed by fixed, parameterized neighborhood queries, not model-generated traversal Cypher
+- `tools.py` describes the public agent operations without opening a database or invoking an LLM
 - `cypher.py` is the safety gate before execution
 - `ontology.py` persists the evolving schema used to guide future prompts
 
@@ -196,6 +199,11 @@ Current high-value methods:
 6. `export()`
 7. `save_snapshot()`
 8. `from_snapshot()`
+9. `recall(context, max_tokens=2000, hops=2)` — ranked, budgeted context text
+
+`clawgraph.tools.get_tool_definitions()` provides JSON Schema, OpenAI, and
+Anthropic tool descriptions. Tool execution and authorization remain the
+responsibility of the consuming application.
 
 ### CLI
 
@@ -208,6 +216,8 @@ Current CLI covers:
 5. `ontology`
 6. `config`
 7. `--output json` flows for agent-facing usage
+8. `recall` — relevant context with a token budget and one- or two-hop traversal
+9. `tools export` — offline, machine-readable tool definitions
 
 ### OpenClaw skill
 

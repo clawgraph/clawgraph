@@ -34,6 +34,8 @@ Usage::
 
 from __future__ import annotations
 
+import json
+import re
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
@@ -46,6 +48,7 @@ from clawgraph.llm import (
     generate_cypher,
     infer_ontology,
     infer_ontology_batch,
+    select_relevant_entities,
 )
 from clawgraph.ontology import Ontology
 
@@ -179,6 +182,87 @@ class Memory:
             raise LLMError(f"Generated invalid Cypher: {validation.errors}")
 
         return self._db.execute(cypher)
+
+    def recall(self, context: str, max_tokens: int = 2000, hops: int = 2) -> str:
+        """Recall relevant existing facts as an agent-friendly text block.
+
+        Counts one UTF-8 byte per token, including separators: a deliberately
+        conservative, Unicode-aware approximation, not a model tokenizer.
+        Graph values are JSON-quoted with ASCII escapes and must be treated
+        as untrusted data. Only complete facts are kept; lower-ranked trailing
+        facts are removed when the next fact would exceed the budget.
+        The LLM sees at most 200 names/labels (16,000 JSON characters), locally
+        prioritized by context word overlap. Large graphs can omit semantic
+        matches outside this shortlist; no unrelated facts are substituted.
+
+        Args:
+            context: Natural language context used to rank existing entities.
+            max_tokens: Approximate output token budget.
+            hops: Neighborhood traversal distance, one or two.
+
+        Returns:
+            Quoted, escaped fact lines in relevance order.
+
+        Raises:
+            ValueError: If context, max_tokens, or hops has an invalid value/type.
+            LLMError: If entity selection fails or returns malformed data.
+        """
+        if not isinstance(context, str):
+            raise ValueError("context must be a string")
+        if type(max_tokens) is not int or max_tokens < 0:
+            raise ValueError("max_tokens must be a nonnegative integer")
+        if type(hops) is not int or hops not in (1, 2):
+            raise ValueError("hops must be an integer of 1 or 2")
+        if not context.strip() or max_tokens == 0:
+            return ""
+        candidates = self._recall_candidates(context)
+        if not candidates:
+            return ""
+        names = select_relevant_entities(context, candidates, model=self._model)
+        facts: dict[str, None] = {}
+        for name in names:
+            neighborhood = self._db.get_neighborhood(name, hops=hops)
+            for entity in neighborhood["entities"]:
+                facts[
+                    f'- Entity {json.dumps(entity["name"])} '
+                    f'(label {json.dumps(entity["label"])}).'
+                ] = None
+            for rel in neighborhood["relationships"]:
+                facts[
+                    f'- {json.dumps(rel["from"])} --{json.dumps(rel["type"])}'
+                    f'--> {json.dumps(rel["to"])}.'
+                ] = None
+        kept: list[str] = []
+        used = 0
+        for fact in facts:
+            cost = len(fact.encode("utf-8")) + bool(kept)
+            if used + cost > max_tokens:
+                break
+            kept.append(fact)
+            used += cost
+        return "\n".join(kept)
+
+    def _recall_candidates(self, context: str) -> list[dict[str, Any]]:
+        """Bound graph data sent to the model with a stable local shortlist."""
+        words = set(re.findall(r"\w+", context.casefold()))
+
+        def priority(row: dict[str, Any]) -> tuple[int, str]:
+            text = f'{row["e.name"]} {row["e.label"]}'.casefold()
+            overlap = len(words.intersection(re.findall(r"\w+", text)))
+            return -overlap, str(row["e.name"])
+
+        candidates: list[dict[str, Any]] = []
+        size = 2
+        for row in sorted(self.entities(), key=priority):
+            candidate = {"name": row["e.name"], "label": row["e.label"]}
+            cost = len(json.dumps(candidate)) + (2 if candidates else 0)
+            if size + cost > 16000:
+                continue
+            candidates.append(candidate)
+            size += cost
+            if len(candidates) == 200:
+                break
+        return candidates
 
     def entities(self) -> list[dict[str, Any]]:
         """Get all entities in the graph."""

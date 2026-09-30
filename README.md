@@ -20,6 +20,8 @@ The project is currently focused on one clear lane: a small, inspectable, Python
 - **Inspectable** — query the graph directly, export JSON, inspect ontology evolution
 - **Automatic ontology** — the LLM infers and maintains your graph schema
 - **Python API** — `from clawgraph import Memory` for use in agentic loops
+- **Context recall** — retrieve relevant graph neighborhoods as budgeted text for agents
+- **Tool definitions** — export JSON Schema, OpenAI, or Anthropic tool descriptions
 - **Batch mode** — process multiple facts in a single LLM call
 - **Idempotent** — adding the same fact twice won't create duplicates
 
@@ -38,7 +40,7 @@ Planned direction:
 
 - broader LLM provider support beyond OpenAI-compatible APIs
 - additional database backends beyond Kuzu
-- better recall/context assembly for agent workflows
+- vector-backed retrieval, entity resolution, and fact correction
 
 ## Installation
 
@@ -77,6 +79,12 @@ clawgraph export graph.json
 # JSON output for agents
 clawgraph query "Who works at Acme?" --output json
 
+# Assemble relevant context for an agent
+clawgraph recall "Preparing an Acme deployment" --max-tokens 1000 --output json
+
+# Export tool definitions without a database or API key
+clawgraph tools export --format openai
+
 # Configure
 clawgraph config llm.model gpt-5.4-mini
 clawgraph config                         # show all config
@@ -111,6 +119,72 @@ mem.export()          # full graph + ontology as dict
 ```
 
 For agents, initialize `Memory()` once and reuse it — the DB connection and ontology are kept warm across calls.
+
+### Context Recall
+
+Use `query()` when you need result rows for a specific question. Use `recall()`
+when you need a text block of relevant stored facts:
+
+```python
+mem = Memory()
+try:
+    context = mem.recall(
+        "Preparing an Acme deployment",
+        max_tokens=1000,
+        hops=2,
+    )
+    # Pass context to your agent as retrieved data, not trusted instructions.
+finally:
+    mem.close()
+```
+
+Recall selects relevant existing entities using the configured OpenAI-compatible
+LLM, then retrieves their neighborhoods with fixed, parameterized graph queries.
+It follows incoming and outgoing relationships, preserves their direction in the
+output, and includes isolated matching entities. `hops` accepts `1` or `2`.
+Unmatched contexts return an empty string rather than unrelated facts.
+
+The token budget conservatively counts one UTF-8 output byte per token,
+including line separators; it is not a provider-specific tokenizer guarantee.
+Recall keeps a prefix of complete facts in relevance order, stopping when the
+next fact does not fit.
+A zero budget returns an empty string; negative budgets and unsupported hop
+counts raise `ValueError`. Provider failures or malformed selections raise
+`LLMError`; applications should handle them as retrieval failures, not as proof
+that nothing is known.
+
+Recall requires an LLM call for nonempty graphs and meaningful contexts.
+Stored entity candidates are sent to the configured provider for relevance
+selection; local storage does not mean inference is offline. Retrieved memory
+remains untrusted data, even though names are escaped in the text output.
+The candidate shortlist is bounded to 200 names/labels and 16,000 JSON
+characters, prioritizing context-word overlap locally. On larger graphs this
+can miss semantic matches outside the shortlist; vector retrieval is not yet
+implemented.
+
+### Agent Tool Definitions
+
+```python
+from clawgraph.tools import get_tool_definitions
+
+tools = get_tool_definitions(format="openai")
+```
+
+```bash
+clawgraph tools export                       # JSON Schema definitions
+clawgraph tools export --format openai       # OpenAI function-calling tools
+clawgraph tools export --format anthropic    # Anthropic tool-use definitions
+```
+
+Definitions cover `add`, `add_batch`, `query`, `recall`, `entities`,
+`relationships`, and `export`. Exporting definitions is offline and does not
+open a database or require credentials. Each export is a fresh JSON-compatible
+list, suitable for passing to your agent framework.
+
+These are **definitions, not an execution dispatcher**: your application must
+validate tool arguments, authorize writes, and explicitly map allowed tool names
+to a `Memory` instance. Anthropic-format export does not add a native Anthropic
+inference backend; ClawGraph's own LLM calls still use an OpenAI-compatible API.
 
 ## OpenClaw Walkthrough
 
