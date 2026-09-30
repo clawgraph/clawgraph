@@ -200,6 +200,9 @@ Current high-value methods:
 7. `save_snapshot()`
 8. `from_snapshot()`
 9. `recall(context, max_tokens=2000, hops=2)` — ranked, budgeted context text
+10. `delete_entity(name)` — exact-name cascade deletion
+11. `retract(statement)` — remove selected stored relationships
+12. `update(old, new)` — atomic replacement of a stored relationship fact
 
 `clawgraph.tools.get_tool_definitions()` provides JSON Schema, OpenAI, and
 Anthropic tool descriptions. Tool execution and authorization remain the
@@ -218,6 +221,11 @@ Current CLI covers:
 7. `--output json` flows for agent-facing usage
 8. `recall` — relevant context with a token budget and one- or two-hop traversal
 9. `tools export` — offline, machine-readable tool definitions
+10. `delete`, `retract`, and `update` — authorized memory maintenance
+
+Correction identifies old relationships and validates replacements before
+mutation. Graph changes are transactional; ontology JSON is synchronized after
+commit and remains a separate persistence boundary.
 
 ### OpenClaw skill
 

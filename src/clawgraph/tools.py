@@ -52,6 +52,16 @@ def get_tool_definitions(format: str = "json-schema") -> list[dict[str, Any]]:
         ("entities", "List all stored entities with their names and labels.", {}, []),
         ("relationships", "List all stored directed relationships.", {}, []),
         ("export", "Export entities, relationships, and ontology as a dictionary.", {}, []),
+        ("delete_entity", "Delete an exact entity, cascading all incoming/outgoing relationships. Requires caller authorization.", {
+            "name": {"type": "string", "minLength": 1, "description": "Exact nonempty entity name."},
+        }, ["name"]),
+        ("retract", "Atomically remove explicitly selected relationships, retaining entities. Requires caller authorization.", {
+            "statement": {"type": "string", "minLength": 1, "description": "Nonempty fact to retract; ambiguous matches are a no-op."},
+        }, ["statement"]),
+        ("update", "Atomically correct existing relationships; unmatched old facts fail without writes. Requires caller authorization.", {
+            "old": {"type": "string", "minLength": 1, "description": "Existing fact to replace."},
+            "new": {"type": "string", "minLength": 1, "description": "Replacement fact containing at least one relationship."},
+        }, ["old", "new"]),
     ]
     definitions = [
         {

@@ -163,3 +163,36 @@ class Ontology:
         """Clear the ontology."""
         self._schema = {"nodes": {}, "relationships": {}}
         self._save()
+
+    def synchronize(
+        self, entities: list[dict[str, Any]], relationships: list[dict[str, Any]],
+    ) -> None:
+        """Synchronize used schema with a committed graph snapshot.
+
+        Surviving labels/types retain custom metadata. Runtime constraints
+        remain unchanged. Ontology JSON is a separate file, not part of the
+        database transaction; persistence errors propagate after graph commit.
+
+        Args:
+            entities: Database rows with e.name and e.label.
+            relationships: Database rows with a.name, r.type, and b.name.
+        """
+        labels = {row["e.name"]: row["e.label"] for row in entities}
+        nodes = {
+            label: deepcopy(self.nodes.get(label, {"name": "STRING"}))
+            for label in sorted({label for label in labels.values() if label})
+        }
+        types: dict[str, Any] = {}
+        for row in sorted(relationships, key=lambda row: (
+            row["r.type"] or "", row["a.name"], row["b.name"],
+        )):
+            rel_type = row["r.type"]
+            if not rel_type or rel_type in types:
+                continue
+            info = deepcopy(self.relationships.get(rel_type, {"properties": {}}))
+            info["from"] = labels.get(row["a.name"]) or "Unknown"
+            info["to"] = labels.get(row["b.name"]) or "Unknown"
+            types[rel_type] = info
+        self._schema["nodes"] = nodes
+        self._schema["relationships"] = types
+        self._save()

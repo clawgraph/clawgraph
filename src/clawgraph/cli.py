@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import typer
 from rich.console import Console
@@ -14,6 +15,9 @@ from rich.table import Table
 
 from clawgraph import __version__
 from clawgraph.tools import ToolFormat, get_tool_definitions
+
+if TYPE_CHECKING:
+    from clawgraph.memory import Memory
 
 app = typer.Typer(
     name="clawgraph",
@@ -269,6 +273,105 @@ def recall(
             _output({"status": "error", "error": str(exc)}, output)
         else:
             console.print(f"Recall error: {exc}", markup=False, highlight=False)
+        raise typer.Exit(1) from exc
+    finally:
+        if mem is not None:
+            mem.close()
+
+
+@app.command()
+def delete(
+    name: str = typer.Argument(..., help="Exact entity name to delete."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Authorize cascading deletion without prompting."),
+    output: OutputFormat = typer.Option(OutputFormat.human, "--output", "-o", help="Output format."),
+) -> None:
+    """Delete an entity and all its relationships after confirmation.
+
+    Args:
+        name: Exact entity name.
+        yes: Explicit authorization for noninteractive use.
+        output: Human or structured JSON output.
+    """
+    if not yes:
+        console.print(
+            f"Delete {json.dumps(name)} and all its relationships?",
+            markup=False, highlight=False,
+        )
+        try:
+            yes = typer.confirm("Proceed?", default=False, err=True)
+        except (typer.Abort, EOFError):
+            yes = False
+    if not yes:
+        if output == OutputFormat.json:
+            _output({"status": "cancelled", "deleted": False}, output)
+        else:
+            console.print("Deletion cancelled.", markup=False)
+        raise typer.Exit(1)
+    _run_memory_mutation(
+        lambda mem: {"name": name, "deleted": mem.delete_entity(name)},
+        model=None, output=output,
+    )
+
+
+@app.command()
+def retract(
+    statement: str = typer.Argument(..., help="Fact whose relationships should be retracted."),
+    model: str | None = typer.Option(None, "--model", "-m", help="Override LLM model."),
+    output: OutputFormat = typer.Option(OutputFormat.human, "--output", "-o", help="Output format."),
+) -> None:
+    """Retract selected relationships without deleting endpoint entities.
+
+    Args:
+        statement: Authorized fact to retract.
+        model: Optional LLM model override.
+        output: Human or JSON output.
+    """
+    _run_memory_mutation(
+        lambda mem: {"removed": mem.retract(statement)}, model=model, output=output,
+    )
+
+
+@app.command()
+def update(
+    old: str = typer.Argument(..., help="Existing fact to correct."),
+    new: str = typer.Argument(..., help="Replacement fact."),
+    model: str | None = typer.Option(None, "--model", "-m", help="Override LLM model."),
+    output: OutputFormat = typer.Option(OutputFormat.human, "--output", "-o", help="Output format."),
+) -> None:
+    """Atomically correct an existing fact without losing it on write failure.
+
+    Args:
+        old: Existing fact; no match fails without mutation.
+        new: Authorized replacement fact.
+        model: Optional LLM model override.
+        output: Human or JSON output.
+    """
+    _run_memory_mutation(
+        lambda mem: mem.update(old, new).to_dict(), model=model, output=output,
+    )
+
+
+def _run_memory_mutation(
+    action: Callable[[Memory], dict[str, Any]], model: str | None, output: OutputFormat,
+) -> None:
+    """Run an explicitly bound mutation and always close initialized memory."""
+    from clawgraph.db import DatabaseError
+    from clawgraph.llm import LLMError
+    from clawgraph.memory import Memory
+
+    mem: Memory | None = None
+    try:
+        mem = Memory(model=model)
+        payload = {"status": "ok", **action(mem)}
+        if output == OutputFormat.json:
+            _output(payload, output)
+        else:
+            out_console.print_json(json.dumps(payload))
+    except (LLMError, DatabaseError, ValueError, OSError, RuntimeError) as exc:
+        if output == OutputFormat.json:
+            _output({"status": "error", "error": str(exc)}, output)
+        else:
+            console.print(f"Mutation error: {exc}", markup=False, highlight=False)
         raise typer.Exit(1) from exc
     finally:
         if mem is not None:

@@ -24,11 +24,18 @@ def test_default_tool_definitions_match_callable_memory_arguments() -> None:
         "query": {"question": "Who works at Acme?"},
         "recall": {"context": "deployment", "max_tokens": 1000, "hops": 1},
         "entities": {}, "relationships": {}, "export": {},
+        "delete_entity": {"name": "Alice"},
+        "retract": {"statement": "Alice works at Acme"},
+        "update": {"old": "Alice works at Acme", "new": "Alice works at NewCo"},
     }
     assert [tool["name"] for tool in definitions] == list(samples)
     for tool in definitions:
         assert set(tool) == {"name", "description", "parameters"}
         assert isinstance(tool["description"], str) and tool["description"]
+        if tool["name"] in ("delete_entity", "retract", "update"):
+            assert "authorization" in tool["description"].lower()
+        if tool["name"] == "delete_entity":
+            assert "cascad" in tool["description"].lower()
         schema = tool["parameters"]
         assert schema["type"] == "object"
         assert schema["additionalProperties"] is False

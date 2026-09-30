@@ -48,6 +48,7 @@ from clawgraph.llm import (
     generate_cypher,
     infer_ontology,
     infer_ontology_batch,
+    select_relationships_for_retraction,
     select_relevant_entities,
 )
 from clawgraph.ontology import Ontology
@@ -267,6 +268,180 @@ class Memory:
     def entities(self) -> list[dict[str, Any]]:
         """Get all entities in the graph."""
         return self._db.get_all_entities()
+
+    def delete_entity(self, name: str) -> bool:
+        """Delete an exact entity, cascading all its relationships.
+
+        Args:
+            name: Nonempty exact entity name; requires caller authorization.
+
+        Returns:
+            Whether an entity was deleted. Repeated deletion is a no-op.
+
+        Raises:
+            ValueError: If name is invalid.
+            DatabaseError: If deletion fails and is rolled back.
+            OSError: If separate ontology JSON persistence fails after commit.
+        """
+        deleted = self._db.delete_entity(name)
+        if deleted:
+            self._synchronize_ontology()
+        return deleted
+
+    def _synchronize_ontology(self) -> None:
+        """Refresh ontology only after a successful database commit."""
+        self._ontology.synchronize(self.entities(), self.relationships())
+
+    def retract(self, statement: str) -> int:
+        """Retract exact stored relationships while preserving endpoint entities.
+
+        Sends at most 200 relationship triples (16,000 JSON characters) to
+        the LLM, prioritizing lexical overlap. Matches outside this bounded
+        shortlist may be missed; ambiguous or unmatched input is a no-op.
+
+        Args:
+            statement: Natural-language fact to retract; requires authorization.
+
+        Returns:
+            Number of matching edges removed atomically.
+
+        Raises:
+            ValueError: If statement is not a nonempty string.
+            LLMError: If relationship selection fails.
+            DatabaseError: If any deletion fails; all deletions are rolled back.
+            OSError: If separate ontology persistence fails after graph commit.
+        """
+        selected = self._select_retractions(statement)
+        removed = self._db.delete_relationships(selected)
+        if removed:
+            self._synchronize_ontology()
+        return removed
+
+    def _select_retractions(self, statement: str) -> list[dict[str, str]]:
+        """Select only existing relationships, never model-generated queries."""
+        if not isinstance(statement, str) or not statement.strip():
+            raise ValueError("statement must be a nonempty string")
+        rows = [
+            {"from": row["a.name"], "to": row["b.name"], "type": row["r.type"]}
+            for row in self.relationships()
+            if all(isinstance(row[key], str) and row[key].strip()
+                   for key in ("a.name", "b.name", "r.type"))
+        ]
+        words = set(re.findall(r"\w+", statement.casefold()))
+
+        def priority(rel: dict[str, str]) -> tuple[int, str, str, str]:
+            text = " ".join(rel.values()).casefold()
+            return (
+                -len(words.intersection(re.findall(r"\w+", text))),
+                rel["from"], rel["to"], rel["type"],
+            )
+
+        candidates: list[dict[str, str]] = []
+        size = 2
+        for rel in sorted(rows, key=priority):
+            cost = len(json.dumps(rel)) + (2 if candidates else 0)
+            if size + cost > 16000:
+                continue
+            candidates.append(rel)
+            size += cost
+            if len(candidates) == 200:
+                break
+        if not candidates:
+            return []
+        return select_relationships_for_retraction(
+            statement, candidates, model=self._model,
+        )
+
+    def update(self, old: str, new: str) -> AddResult:
+        """Correct an existing fact in one atomic graph transaction.
+
+        Old-fact selection uses the same bounded shortlist as retract().
+        Replacement extraction must contain at least one relationship; each
+        endpoint must already exist or be present in the extracted entities.
+        Selection and full validation finish before mutation. Existing endpoint
+        entities and creation timestamps for retained facts are preserved.
+        Ontology JSON is synchronized separately after the graph commit.
+
+        Args:
+            old: Fact whose existing relationship triples should be replaced.
+            new: Replacement fact; requires caller authorization.
+
+        Returns:
+            AddResult counting replacement entity and relationship groups.
+
+        Raises:
+            ValueError: If old/new is empty or the old fact cannot be found.
+            LLMError: If selection or extraction fails before mutation.
+            DatabaseError: If any write fails; the old fact remains intact.
+            OSError: If separate ontology persistence fails after graph commit.
+        """
+        for text, field in ((old, "old"), (new, "new")):
+            if not isinstance(text, str) or not text.strip():
+                raise ValueError(f"{field} must be a nonempty string")
+        selected = self._select_retractions(old)
+        if not selected:
+            raise ValueError("No matching old fact found; nothing was changed")
+        try:
+            inferred = infer_ontology(
+                new, existing_ontology=self._ontology.to_context_string(), model=self._model,
+            )
+        except (AttributeError, IndexError, KeyError, TypeError, ValueError, RecursionError) as exc:
+            raise LLMError("Invalid replacement extraction response") from exc
+        entities, relationships = self._validated_replacement(inferred)
+        self._db.replace_relationships(selected, entities, relationships)
+        self._synchronize_ontology()
+        return AddResult(
+            entities=entities, relationships=relationships,
+            executed=len(entities) + len(relationships), errors=[],
+        )
+
+    def _validated_replacement(
+        self, inferred: object,
+    ) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
+        """Validate the complete replacement before issuing any writes."""
+        if not isinstance(inferred, dict) or set(inferred) != {"entities", "relationships"}:
+            raise LLMError("Invalid replacement: expected entities and relationships")
+        entities = self._replacement_records(inferred["entities"], ("name", "label"))
+        relationships = self._replacement_records(inferred["relationships"], ("from", "to", "type"))
+        if not relationships:
+            raise LLMError("Replacement must contain at least one relationship")
+        by_name: dict[str, dict[str, str]] = {}
+        for entity in entities:
+            if (
+                self._ontology.allowed_labels is not None
+                and entity["label"] not in self._ontology.allowed_labels
+            ):
+                raise LLMError("Replacement entity label is not allowed")
+            name = entity["name"]
+            if name in by_name and by_name[name] != entity:
+                raise LLMError("Replacement contains conflicting labels for one entity")
+            by_name[name] = entity
+        known = {row["e.name"] for row in self.entities()} | set(by_name)
+        for rel in relationships:
+            if (
+                self._ontology.allowed_relationship_types is not None
+                and rel["type"] not in self._ontology.allowed_relationship_types
+            ):
+                raise LLMError("Replacement relationship type is not allowed")
+            if rel["from"] not in known or rel["to"] not in known:
+                raise LLMError("Replacement relationship refers to a missing endpoint")
+        unique = {(rel["from"], rel["to"], rel["type"]): rel for rel in relationships}
+        return list(by_name.values()), list(unique.values())
+
+    @staticmethod
+    def _replacement_records(value: object, fields: tuple[str, ...]) -> list[dict[str, str]]:
+        """Require exact record shapes and nonempty string values."""
+        if not isinstance(value, list):
+            raise LLMError("Replacement entities and relationships must be lists")
+        result: list[dict[str, str]] = []
+        for row in value:
+            if (
+                not isinstance(row, dict) or set(row) != set(fields)
+                or any(not isinstance(item, str) or not item.strip() for item in row.values())
+            ):
+                raise LLMError("Invalid replacement record")
+            result.append({field: row[field] for field in fields})
+        return result
 
     def relationships(self) -> list[dict[str, Any]]:
         """Get all relationships in the graph."""

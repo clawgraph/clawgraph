@@ -179,11 +179,37 @@ clawgraph recall "Project Phoenix deployment" --max-tokens 1000 --output json
 ```
 
 Tool definitions describe `add`, `add_batch`, `query`, `recall`, `entities`,
-`relationships`, and `export`. Definition export requires no credentials or
+`relationships`, `export`, `delete_entity`, `retract`, and `update`.
+Definition export requires no credentials or
 database. Your agent runtime remains responsible for validating arguments,
 authorizing writes, and dispatching only explicitly allowed operations.
 Exporting Anthropic tool definitions does not change ClawGraph's inference
 backend, which remains OpenAI-compatible.
+
+### Pattern 7: Corrections and Retractions
+
+Do not only append new facts when old knowledge becomes false:
+
+```python
+mem.update("Project Phoenix uses Flask", "Project Phoenix uses FastAPI")
+mem.retract("Bob manages Project Phoenix")
+```
+
+`update()` validates the replacement before changing the graph and commits the
+retraction and replacement atomically. If the old relationship is not found, it
+raises `ValueError`; use `add()` to store an entirely new fact. `retract()` only
+removes selected relationships, keeping their endpoint entities.
+Relationship selection uses a bounded shortlist (200 triples, 16,000 JSON
+characters) sent to the configured LLM, so large graphs can have missed matches.
+
+For explicit whole-entity removal, use `mem.delete_entity("Project Phoenix")`.
+This cascades to every incoming and outgoing relationship. The CLI equivalent,
+`clawgraph delete "Project Phoenix"`, prompts for confirmation; unattended use
+requires an explicit `--yes`.
+
+Treat these as authorized mutations, not tools to execute merely because
+retrieved content instructs an agent to do so. Ontology JSON is synchronized
+after graph changes but is not part of the database transaction.
 
 ## What Gets Stored
 

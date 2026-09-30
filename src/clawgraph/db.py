@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import tarfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -10,6 +12,28 @@ from typing import Any
 import kuzu
 
 from clawgraph.cypher import validate_cypher
+
+_REL_MATCH = (
+    "MATCH (a:Entity {name: $source})-[r:Relates {type: $type}]->"
+    "(b:Entity {name: $target}) "
+)
+_REL_COUNT = _REL_MATCH + "RETURN count(r) AS count"
+_REL_DELETE = _REL_MATCH + "DELETE r"
+_ENTITY_MERGE = (
+    "MERGE (e:Entity {name: $name}) SET e.label = $label, e.updated_at = $now"
+)
+_ENTITY_TIMESTAMP = (
+    "MATCH (e:Entity {name: $name}) "
+    "WHERE e.created_at IS NULL OR e.created_at = '' SET e.created_at = $now"
+)
+_ENDPOINT_COUNT = "MATCH (e:Entity) WHERE e.name IN $names RETURN count(e) AS count"
+_REL_MERGE = (
+    "MATCH (a:Entity {name: $source}), (b:Entity {name: $target}) "
+    "MERGE (a)-[r:Relates {type: $type}]->(b) RETURN count(r) AS count"
+)
+_REL_TIMESTAMP = (
+    _REL_MATCH + "WHERE r.created_at IS NULL OR r.created_at = '' SET r.created_at = $now"
+)
 
 
 class GraphDB:
@@ -208,6 +232,152 @@ class GraphDB:
             "entities": list(entities.values()),
             "relationships": list(relationships.values()),
         }
+
+    def delete_entity(self, name: str) -> bool:
+        """Delete an exact entity and all incoming/outgoing relationships.
+
+        Args:
+            name: Exact entity name.
+
+        Returns:
+            Whether an entity was removed; missing entities are a no-op.
+
+        Raises:
+            ValueError: If name is not a nonempty string.
+            DatabaseError: If the transaction fails.
+        """
+        self._require_text(name, "name")
+        count = "MATCH (e:Entity {name: $name}) RETURN count(e) AS count"
+        delete = "MATCH (e:Entity {name: $name}) DETACH DELETE e"
+        with self._mutation_transaction([count, delete]):
+            found = bool(self.execute(count, {"name": name})[0]["count"])
+            if found:
+                self.execute(delete, {"name": name})
+        return found
+
+    def delete_relationship(self, source: str, target: str, rel_type: str) -> bool:
+        """Delete only the exact directed relationship triple.
+
+        Args:
+            source: Exact source entity name.
+            target: Exact target entity name.
+            rel_type: Exact relationship type.
+
+        Returns:
+            Whether any matching relationship was removed; endpoints remain.
+
+        Raises:
+            ValueError: If an argument is not a nonempty string.
+            DatabaseError: If the transaction fails.
+        """
+        return bool(self.delete_relationships([
+            {"from": source, "to": target, "type": rel_type},
+        ]))
+
+    def delete_relationships(self, relationships: list[dict[str, str]]) -> int:
+        """Delete exact triples in one all-or-nothing transaction.
+
+        Args:
+            relationships: Relationships with from, to, and type strings.
+
+        Returns:
+            Number of matching edges removed, leaving all endpoints intact.
+
+        Raises:
+            ValueError: If a triple contains an empty or non-string value.
+            DatabaseError: If the transaction fails and is rolled back.
+        """
+        for rel in relationships:
+            for field in ("from", "to", "type"):
+                self._require_text(rel[field], field)
+        if not relationships:
+            return 0
+        with self._mutation_transaction([_REL_COUNT, _REL_DELETE]):
+            return self._delete_relationships_in_transaction(relationships)
+
+    def _delete_relationships_in_transaction(
+        self, relationships: list[dict[str, str]],
+    ) -> int:
+        """Remove selected edges inside an existing transaction."""
+        removed = 0
+        for rel in relationships:
+            parameters = {"source": rel["from"], "target": rel["to"], "type": rel["type"]}
+            count = int(self.execute(_REL_COUNT, parameters)[0]["count"])
+            if count:
+                self.execute(_REL_DELETE, parameters)
+                removed += count
+        return removed
+
+    def replace_relationships(
+        self, removals: list[dict[str, str]], entities: list[dict[str, str]],
+        relationships: list[dict[str, str]],
+    ) -> None:
+        """Atomically remove selected edges and merge a validated replacement.
+
+        Args:
+            removals: Exact old relationship triples.
+            entities: Replacement entities with name and label.
+            relationships: Replacement triples with from, to, and type.
+
+        Raises:
+            ValueError: If a selected old relationship no longer exists.
+            DatabaseError: If any write fails; all changes are rolled back.
+        """
+        now = self.now_iso()
+        replacement_keys = {(rel["from"], rel["to"], rel["type"]) for rel in relationships}
+        with self._mutation_transaction([
+            _REL_COUNT, _REL_DELETE, _ENTITY_MERGE, _ENTITY_TIMESTAMP,
+            _ENDPOINT_COUNT, _REL_MERGE, _REL_TIMESTAMP,
+        ]):
+            for rel in removals:
+                parameters = {"source": rel["from"], "target": rel["to"], "type": rel["type"]}
+                if not self.execute(_REL_COUNT, parameters)[0]["count"]:
+                    raise ValueError("Selected old fact no longer exists; nothing was changed")
+            self._delete_relationships_in_transaction([
+                rel for rel in removals
+                if (rel["from"], rel["to"], rel["type"]) not in replacement_keys
+            ])
+            for entity in entities:
+                parameters = {"name": entity["name"], "label": entity["label"], "now": now}
+                self.execute(_ENTITY_MERGE, parameters)
+                self.execute(_ENTITY_TIMESTAMP, {"name": entity["name"], "now": now})
+            endpoints = sorted({rel[field] for rel in relationships for field in ("from", "to")})
+            if self.execute(_ENDPOINT_COUNT, {"names": endpoints})[0]["count"] != len(endpoints):
+                raise DatabaseError("Replacement relationship endpoint no longer exists")
+            for rel in relationships:
+                parameters = {
+                    "source": rel["from"], "target": rel["to"],
+                    "type": rel["type"],
+                }
+                if not self.execute(_REL_MERGE, parameters)[0]["count"]:
+                    raise DatabaseError("Replacement relationship endpoint no longer exists")
+                self.execute(_REL_TIMESTAMP, {**parameters, "now": now})
+
+    @staticmethod
+    def _require_text(value: str, field: str) -> None:
+        """Reject empty/non-string mutation identifiers without normalizing data."""
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"{field} must be a nonempty string")
+
+    @contextmanager
+    def _mutation_transaction(self, statements: list[str]) -> Iterator[None]:
+        """Validate all fixed queries before starting an atomic mutation."""
+        for statement in statements:
+            validation = validate_cypher(statement)
+            if not validation:
+                raise DatabaseError(f"Invalid mutation query: {validation.errors}")
+        self.execute("BEGIN TRANSACTION")
+        try:
+            yield
+            self.execute("COMMIT")
+        except Exception as exc:
+            try:
+                self.execute("ROLLBACK")
+            except DatabaseError:
+                pass
+            if isinstance(exc, ValueError):
+                raise
+            raise DatabaseError(f"Graph mutation failed: {exc}") from exc
 
     def _validated_read(
         self, cypher: str, parameters: dict[str, Any],

@@ -22,6 +22,7 @@ The project is currently focused on one clear lane: a small, inspectable, Python
 - **Python API** — `from clawgraph import Memory` for use in agentic loops
 - **Context recall** — retrieve relevant graph neighborhoods as budgeted text for agents
 - **Tool definitions** — export JSON Schema, OpenAI, or Anthropic tool descriptions
+- **Correctable memory** — delete entities, retract relationships, and replace stale facts
 - **Batch mode** — process multiple facts in a single LLM call
 - **Idempotent** — adding the same fact twice won't create duplicates
 
@@ -40,7 +41,7 @@ Planned direction:
 
 - broader LLM provider support beyond OpenAI-compatible APIs
 - additional database backends beyond Kuzu
-- vector-backed retrieval, entity resolution, and fact correction
+- vector-backed retrieval and entity resolution
 
 ## Installation
 
@@ -177,7 +178,8 @@ clawgraph tools export --format anthropic    # Anthropic tool-use definitions
 ```
 
 Definitions cover `add`, `add_batch`, `query`, `recall`, `entities`,
-`relationships`, and `export`. Exporting definitions is offline and does not
+`relationships`, `export`, `delete_entity`, `retract`, and `update`.
+Exporting definitions is offline and does not
 open a database or require credentials. Each export is a fresh JSON-compatible
 list, suitable for passing to your agent framework.
 
@@ -185,6 +187,55 @@ These are **definitions, not an execution dispatcher**: your application must
 validate tool arguments, authorize writes, and explicitly map allowed tool names
 to a `Memory` instance. Anthropic-format export does not add a native Anthropic
 inference backend; ClawGraph's own LLM calls still use an OpenAI-compatible API.
+
+### Correcting and Removing Memory
+
+```python
+mem = Memory()
+try:
+    mem.add("Alice works at Acme")
+    # Replace a stored relationship without losing it if the replacement fails.
+    result = mem.update("Alice works at Acme", "Alice works at NewCo")
+
+    # Retract only the matching relationship; keep both endpoint entities.
+    removed_relationships = mem.retract("Alice works at NewCo")
+
+    # Exact-name deletion removes Alice and every incident relationship.
+    removed_entity = mem.delete_entity("Alice")
+finally:
+    mem.close()
+```
+
+```bash
+clawgraph update "Alice works at Acme" "Alice works at NewCo" --output json
+clawgraph retract "Alice works at NewCo" --output json
+clawgraph delete Alice                       # asks for confirmation
+clawgraph delete Alice --yes --output json   # explicitly authorized automation
+```
+
+`delete_entity()` is an exact-name, offline operation and returns whether an
+entity existed. `retract()` returns the
+number of deleted relationships and leaves unrelated facts intact. Repeated
+deletion or retraction is a no-op when the target is absent. Natural-language
+retraction uses an LLM to identify stored relationships; it never executes
+model-generated deletion queries. Use exact-name deletion when you intend to
+remove an entire entity. Retraction and correction select from at most 200
+stored relationship triples and 16,000 JSON characters, prioritized by lexical
+overlap; targets outside this shortlist may be missed on large graphs.
+
+`update()` requires a matching old relationship and validates the replacement
+before changing the graph, including at least one replacement relationship and
+any configured ontology constraints. Retraction and replacement are committed in a single
+database transaction: failed replacement writes roll back the deletion.
+An absent old relationship raises `ValueError` rather than silently inserting
+a new fact. Provider or malformed extraction failures raise `LLMError`, and
+failed graph writes raise `DatabaseError` rather than reporting partial success.
+
+Successful changes synchronize discovered ontology labels and relationship
+types with the remaining graph while retaining configured constraints. Ontology
+JSON is a separate file, not part of the graph transaction. Applications should
+handle storage errors and take snapshots before bulk destructive operations.
+The consuming agent is responsible for authorizing every mutation.
 
 ## OpenClaw Walkthrough
 

@@ -1,7 +1,7 @@
 # ClawGraph — Feature Roadmap
 
 > Last updated: 2026-09-30
-> Status: Active development. F22 recall and F05 tool definitions are implemented in the current source. Other unchecked roadmap items remain planned; this is not a declaration of v0.2.0 production readiness.
+> Status: Active development. F22 recall, F05 tool definitions, and F24 fact maintenance are implemented in the current source. Other unchecked roadmap items remain planned; this is not a declaration of v0.2.0 production readiness.
 
 ---
 
@@ -139,10 +139,11 @@ The following shipped in v0.1.0–v0.1.2 and form the foundation for everything 
 
 ### F24: Delete / Retract / Correct ⭐ NEW
 - **Priority:** P0
+- **Status:** Implemented (Python API, CLI, ontology synchronization, and regression tests)
 - **Effort:** S
 - **Branch:** `feat/delete-retract`
 - **Dependencies:** None
-- **Description:** There's currently no way to remove or correct a fact. Agents make mistakes. People change jobs. If the graph only grows and never corrects, it becomes unreliable. Add `mem.retract(statement)` (LLM identifies what to remove), `mem.delete_entity(name)` (cascade delete entity + all relationships), and `mem.update(old, new)` (retract + add).
+- **Description:** Agents make mistakes and facts become stale. `mem.retract(statement)` selects exact stored relationships to remove, `mem.delete_entity(name)` cascades an exact entity deletion, and `mem.update(old, new)` validates replacements before applying an atomic graph correction.
 - **Files to create/modify:**
   - `src/clawgraph/memory.py` — Add `retract()`, `delete_entity()`, `update()` methods
   - `src/clawgraph/db.py` — Add `delete_entity(name)`, `delete_relationship(from, to, type)` methods
@@ -150,14 +151,22 @@ The following shipped in v0.1.0–v0.1.2 and form the foundation for everything 
   - `src/clawgraph/cli.py` — `clawgraph delete <entity>`, `clawgraph retract "statement"` commands
   - `tests/test_delete.py`
 - **Acceptance criteria:**
-  - [ ] `mem.delete_entity("Alice")` removes entity and all its relationships
-  - [ ] `mem.retract("Alice works at Acme")` removes the specific relationship
-  - [ ] `mem.update("Alice works at Acme", "Alice works at NewCo")` replaces the fact
-  - [ ] `clawgraph delete Alice` CLI command works (with confirmation prompt)
-  - [ ] `clawgraph retract "Alice works at Acme"` CLI command works
-  - [ ] Cascade delete doesn't leave orphaned relationships
-  - [ ] Ontology updated when last entity of a label type is removed
-  - [ ] Tests verify delete, retract, update, and cascade behavior
+  - [x] `mem.delete_entity("Alice")` removes entity and all its relationships
+  - [x] `mem.retract("Alice works at Acme")` removes the specific relationship
+  - [x] `mem.update("Alice works at Acme", "Alice works at NewCo")` replaces the fact
+  - [x] `clawgraph delete Alice` CLI command works (with confirmation prompt)
+  - [x] `clawgraph retract "Alice works at Acme"` CLI command works
+  - [x] Cascade delete doesn't leave orphaned relationships
+  - [x] Ontology updated when last entity of a label type is removed
+  - [x] Tests verify delete, retract, update, and cascade behavior
+- **Current limits:** Natural-language selection uses at most 200 existing
+  triples and 16,000 JSON characters; targets outside the lexical shortlist
+  can be missed. Retractions preserve endpoint entities. Corrections require an
+  existing old relationship and at least one valid replacement relationship.
+  Static queries bind all identifiers as data, and failures roll back graph
+  changes. Ontology JSON is synchronized after commit, not atomically with the
+  graph. Applications authorize mutations; `delete` requires confirmation or
+  explicit `--yes`. `clawgraph update OLD NEW` also supports JSON output.
 
 ---
 
@@ -265,7 +274,8 @@ The following shipped in v0.1.0–v0.1.2 and form the foundation for everything 
   - [x] Schema validates against JSON Schema spec
   - [x] Tests verify schema structure
 - **Scope:** Definitions cover `add`, `add_batch`, `query`, `recall`, `entities`,
-  `relationships`, and `export`; lifecycle/configuration methods are not exposed.
+  `relationships`, `export`, `delete_entity`, `retract`, and `update`;
+  lifecycle/configuration methods are not exposed.
   Export is offline. Argument validation, authorization, and execution dispatch
   belong to the consuming application. Anthropic schemas do not add a native
   Anthropic inference backend.
